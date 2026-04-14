@@ -19,6 +19,7 @@ USAGE:
 WHAT DOES THIS FILE DO?
 
     STEP 5 — Routing (sequential routing):
+    this makes a sequential extramileage insertion route.
     
 =============================================================================
 """
