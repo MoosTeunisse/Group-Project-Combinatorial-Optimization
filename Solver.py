@@ -1,43 +1,34 @@
-# import sys
-# from InstanceCVRPTWUI import InstanceCVRPTWUI
-
-# class greedySolutionMaker:
-
-    # def __init__(self, x):
-        # self.x=x
-        # self.y=x.Requests
-
 """
 =============================================================================
 VeRoLog 2017  —  Step 2: Greedy Baseline  +  Step 3: Cost Calculator
 =============================================================================
 
-MAPSTRUCTUUR (alles in dezelfde map zetten):
-    Solver.py              <-- DIT BESTAND
-    baseCVRPTWUI.py         <-- uit de zip, NIET aanpassen
-    InstanceCVRPTWUI.py     <-- uit de zip, NIET aanpassen
-    Validate.py             <-- uit de zip, NIET aanpassen
+FILE STRUCTURE (place all files in the same directory):
+    Solver.py              <-- THIS FILE
+    baseCVRPTWUI.py         <-- from the zip, DO NOT modify
+    InstanceCVRPTWUI.py     <-- from the zip, DO NOT modify
+    Validate.py             <-- from the zip, DO NOT modify
 
-GEBRUIK:
+USAGE:
     python Solver.py -i instances/testInstance.txt -o solutions/sol.txt
     python Solver.py -i instances/testInstance.txt -o solutions/sol.txt --validate
     python Solver.py --batch instances/ solutions/
 
-WAT DOET DIT BESTAND?
+WHAT DOES THIS FILE DO?
 
-  STEP 2 — Greedy Baseline (een geldige oplossing, hoe duur ook):
-    2A. Wijs aan elk verzoek de vroegst mogelijke leveringsdag toe
-        waarbij de toolbeschikbaarheid gerespecteerd wordt.
-        Als dat niet lukt: repareer overtredingen iteratief.
-    2B. Stuur voor elke taak één aparte truck: depot -> klant -> depot.
-        Één taak per truck = nooit capaciteits- of afstandsproblemen.
-    2C. Schrijf het resultaat in het officiële tab-gescheiden formaat.
+  STEP 2 — Greedy Baseline (a valid solution, however expensive):
+    2A. Assign to each request the earliest possible delivery day
+        while respecting tool availability.
+        If that fails: repair violations iteratively.
+    2B. Send a separate truck for each task: depot -> customer -> depot.
+        One task per truck = never capacity or distance issues.
+    2C. Write the result in the official tab-separated format.
 
-  STEP 3 — Kostenberekening:
-    - VEHICLE_COST      × max voertuigen op één dag
-    - VEHICLE_DAY_COST  × totaal voertuig-dagen
-    - DISTANCE_COST     × totale reisafstand
-    - tool.cost         × piek dagelijks toolgebruik per type
+  STEP 3 — Cost Calculation:
+    - VEHICLE_COST      × max vehicles on a single day
+    - VEHICLE_DAY_COST  × total vehicle-days
+    - DISTANCE_COST     × total travel distance
+    - tool.cost         × peak daily tool usage per type
 =============================================================================
 """
 
@@ -54,13 +45,13 @@ from InstanceCVRPTWUI import InstanceCVRPTWUI
 
 
 # =============================================================================
-# HULPFUNCTIE: afstandsmatrix
+# HELPER FUNCTION: distance matrix
 # =============================================================================
 
 def build_dist_matrix(inst):
     """
-    Bouw een n×n afstandsmatrix op basis van inst.Coordinates.
-    Gebruikt vloer van Euclidische afstand, zoals het probleem vereist.
+    Build an n×n distance matrix based on inst.Coordinates.
+    Uses floor of Euclidean distance, as required by the problem.
     """
     n    = len(inst.Coordinates)
     dist = [[0] * n for _ in range(n)]
@@ -77,210 +68,211 @@ def build_dist_matrix(inst):
 
 
 # =============================================================================
-# STEP 2A — Leveringsdagen toewijzen + repair
+# STEP 2A — Assign delivery days + repair
 # =============================================================================
 
 def assign_delivery_days(inst):
     """
-    STEP 2A — Wijs aan elk verzoek de vroegst mogelijke leveringsdag toe
-    zodat de toolbeschikbaarheid niet overschreden wordt.
+    STEP 2A — Assign to each request the earliest possible delivery day
+    so that tool availability is not exceeded.
 
-    Fase 1 – Greedy toewijzing:
-      - Sorteer verzoeken op vroegste deadline (strengste eerst)
-      - Kies de vroegste dag in [fromDay, toDay] die haalbaar is
-      - Als geen dag haalbaar is: kies de dag met de laagste piek
-        (noodoplossing — kan tijdelijk een overtreding veroorzaken)
+    Phase 1 – Greedy assignment:
+      - Sort requests by earliest deadline (strictest first)
+      - Choose the earliest day in [fromDay, toDay] that is feasible
+      - If no day is feasible: choose the day with the lowest peak
+        (emergency fallback — may temporarily cause a violation)
 
-    Fase 2 – Repair:
-      - Als er nog tooloverschrijdingen zijn (door noodoplossingen),
-        verschuif de veroorzakers iteratief naar betere dagen tot
-        alle overtredingen weg zijn.
+    Phase 2 – Repair:
+      - If tool violations remain (due to emergency fallbacks),
+        iteratively shift offenders to better days until
+        all violations are resolved.
 
-    Validator-definitie toolgebruik:
-      Tools tellen als 'buiten depot' van leveringsdag t/m ophaaldag
-      inclusief: range(leveringsdag, ophaaldag + 1)
+    Validator tool usage definition:
+      Tools count as 'outside depot' from delivery day through pickup day
+      inclusive: range(delivery_day, pickup_day + 1)
 
-    Geeft terug: dict  verzoek-ID -> leveringsdag
+    Returns: dict  request ID -> delivery day
     """
-    usage = defaultdict(int)   # (dag, tool_id) -> bezetting
-    dd    = {}
+    usage = defaultdict(int)   # (day, tool_id) -> occupancy
+    delivery_day = {}
 
-    # ── Fase 1: Greedy toewijzing ────────────────────────────────────
-    gesorteerd = sorted(inst.Requests,
-                        key=lambda r: (r.toDay, r.toDay - r.fromDay))
+    # ── Phase 1: Greedy assignment ───────────────────────────────────
+    sorted_requests = sorted(inst.Requests,
+                             key=lambda r: (r.toDay, r.toDay - r.fromDay))
 
-    for req in gesorteerd:
+    for req in sorted_requests:
         tool_max = inst.Tools[req.tool - 1].amount
-        gekozen  = None
+        chosen   = None
 
-        for dag in range(req.fromDay, req.toDay + 1):
-            bezet = range(dag, dag + req.numDays + 1)   # incl. ophaaldag
+        for day in range(req.fromDay, req.toDay + 1):
+            occupied = range(day, day + req.numDays + 1)   # incl. pickup day
             if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in bezet):
-                gekozen = dag
+                   for d in occupied):
+                chosen = day
                 break
 
-        if gekozen is None:
-            # Noodoplossing: dag met laagste piekbezetting
-            gekozen = min(
+        if chosen is None:
+            # Emergency fallback: day with lowest peak occupancy
+            chosen = min(
                 range(req.fromDay, req.toDay + 1),
-                key=lambda dag: max(
+                key=lambda day: max(
                     usage[(d, req.tool)]
-                    for d in range(dag, dag + req.numDays + 1)
+                    for d in range(day, day + req.numDays + 1)
                 )
             )
 
-        dd[req.ID] = gekozen
-        for d in range(gekozen, gekozen + req.numDays + 1):
+        delivery_day[req.ID] = chosen
+        for d in range(chosen, chosen + req.numDays + 1):
             usage[(d, req.tool)] += req.toolCount
 
-    # ── Fase 2: Repair ───────────────────────────────────────────────
+    # ── Phase 2: Repair ──────────────────────────────────────────────
     for _ in range(5000):
-        # Zoek alle overtredingen
-        overtredingen = {
+        # Find all violations
+        violations = {
             (d, t): v
             for (d, t), v in usage.items()
             if v > inst.Tools[t - 1].amount
         }
-        if not overtredingen:
-            break   # klaar
+        if not violations:
+            break   # done
 
-        # Kies een willekeurige overtreding
-        (vdag, vtool), _ = random.choice(list(overtredingen.items()))
+        # Pick a random violation
+        (vday, vtool), _ = random.choice(list(violations.items()))
         tool_max = inst.Tools[vtool - 1].amount
 
-        # Zoek verzoeken die bijdragen aan deze overtreding
-        bijdragers = [
+        # Find requests contributing to this violation
+        contributors = [
             req for req in inst.Requests
             if req.tool == vtool
-            and vdag in range(dd[req.ID], dd[req.ID] + req.numDays + 1)
+            and vday in range(delivery_day[req.ID],
+                              delivery_day[req.ID] + req.numDays + 1)
         ]
-        if not bijdragers:
+        if not contributors:
             break
 
-        # Kies een willekeurige bijdrager en probeer hem te verschuiven
-        req = random.choice(bijdragers)
-        cur = dd[req.ID]
+        # Pick a random contributor and try to shift it
+        req = random.choice(contributors)
+        cur = delivery_day[req.ID]
 
-        # Verwijder huidige bijdrage
+        # Remove current contribution
         for d in range(cur, cur + req.numDays + 1):
             usage[(d, req.tool)] -= req.toolCount
 
-        # Zoek haalbare alternatieve dag
-        alternatieven = list(range(req.fromDay, req.toDay + 1))
-        random.shuffle(alternatieven)
-        gekozen = None
+        # Find a feasible alternative day
+        alternatives = list(range(req.fromDay, req.toDay + 1))
+        random.shuffle(alternatives)
+        chosen = None
 
-        for dag in alternatieven:
+        for day in alternatives:
             if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in range(dag, dag + req.numDays + 1)):
-                gekozen = dag
+                   for d in range(day, day + req.numDays + 1)):
+                chosen = day
                 break
 
-        if gekozen is None:
-            # Geen perfecte dag: kies dag met laagste piek
-            gekozen = min(
-                alternatieven,
-                key=lambda dag: max(
+        if chosen is None:
+            # No perfect day: choose day with lowest peak
+            chosen = min(
+                alternatives,
+                key=lambda day: max(
                     usage[(d, req.tool)]
-                    for d in range(dag, dag + req.numDays + 1)
+                    for d in range(day, day + req.numDays + 1)
                 )
             )
 
-        dd[req.ID] = gekozen
-        for d in range(gekozen, gekozen + req.numDays + 1):
+        delivery_day[req.ID] = chosen
+        for d in range(chosen, chosen + req.numDays + 1):
             usage[(d, req.tool)] += req.toolCount
 
-    return dd
+    return delivery_day
 
 
 # =============================================================================
-# STEP 2B — Routes bouwen: één truck per taak
+# STEP 2B — Build routes: one truck per task
 # =============================================================================
 
-def build_routes(inst, deliver_day):
+def build_routes(inst, delivery_day):
     """
-    STEP 2B — Stuur voor elke taak één aparte truck.
+    STEP 2B — Send a separate truck for each task.
 
-    Elke truck rijdt: depot -> klant -> depot
-    Route = [0, taak, 0]   waarbij 0 = depot
+    Each truck drives: depot -> customer -> depot
+    Route = [0, task, 0]   where 0 = depot
 
-    Positieve taak (+r) = levering van verzoek r
-    Negatieve taak (-r) = ophaling van verzoek r
+    Positive task (+r) = delivery of request r
+    Negative task (-r) = pickup of request r
 
-    Dit is de simpelste oplossing die altijd werkt:
-      - Nooit capaciteitsproblemen (één taak per truck)
-      - Nooit afstandsproblemen (elke klant is bereikbaar)
+    This is the simplest solution that always works:
+      - Never capacity issues (one task per truck)
+      - Never distance issues (every customer is reachable)
 
-    Geeft terug: dict  dag -> lijst van routes
+    Returns: dict  day -> list of routes
     """
-    dag_taken = defaultdict(list)
+    day_tasks = defaultdict(list)
 
     for req in inst.Requests:
-        lever_dag  = deliver_day[req.ID]
-        ophaal_dag = lever_dag + req.numDays
+        deliver = delivery_day[req.ID]
+        pickup  = deliver + req.numDays
 
-        dag_taken[lever_dag].append(+req.ID)    # levering
-        dag_taken[ophaal_dag].append(-req.ID)   # ophaling
+        day_tasks[deliver].append(+req.ID)   # delivery
+        day_tasks[pickup].append(-req.ID)    # pickup
 
     days_routes = {}
-    for dag, taken in sorted(dag_taken.items()):
+    for day, tasks in sorted(day_tasks.items()):
         routes = []
-        for taak in taken:
-            route = [0, taak, 0]   # depot -> klant -> depot
+        for task in tasks:
+            route = [0, task, 0]   # depot -> customer -> depot
             routes.append(route)
-        days_routes[dag] = routes
+        days_routes[day] = routes
 
     return days_routes
 
 
 # =============================================================================
-# STEP 3 — Kostenberekening
+# STEP 3 — Cost calculation
 # =============================================================================
 
-def compute_cost(inst, dist, deliver_day, days_routes):
+def compute_cost(inst, dist, delivery_day, days_routes):
     """
-    STEP 3 — Bereken de totale kosten van de oplossing.
+    STEP 3 — Calculate the total cost of the solution.
 
-    Kostformule (uit het probleem):
-        VEHICLE_COST      x  max voertuigen gebruikt op één dag
-        VEHICLE_DAY_COST  x  totaal voertuig-dagen (som over alle dagen)
-        DISTANCE_COST     x  totale reisafstand
-        tool[i].cost      x  piek dagelijks gebruik van tool type i
+    Cost formula (from the problem):
+        VEHICLE_COST      x  max vehicles used on a single day
+        VEHICLE_DAY_COST  x  total vehicle-days (sum across all days)
+        DISTANCE_COST     x  total travel distance
+        tool[i].cost      x  peak daily usage of tool type i
 
-    Toolgebruik (validator-definitie):
-      Tools tellen als buiten-depot van leveringsdag t/m ophaaldag
-      inclusief: range(leveringsdag, ophaaldag + 1)
+    Tool usage (validator definition):
+      Tools count as outside-depot from delivery day through pickup day
+      inclusive: range(delivery_day, pickup_day + 1)
 
-    Geeft terug:
+    Returns:
         (max_vehicles, total_vehicle_days, tool_use_list,
          total_distance, total_cost)
     """
     num_tools = len(inst.Tools)
 
-    # ── 1. Dagelijks toolgebruik ─────────────────────────────────────
-    dagelijks = defaultdict(lambda: [0] * num_tools)
+    # ── 1. Daily tool usage ──────────────────────────────────────────
+    daily = defaultdict(lambda: [0] * num_tools)
 
     for req in inst.Requests:
-        ti         = req.tool - 1
-        lever_dag  = deliver_day[req.ID]
-        ophaal_dag = lever_dag + req.numDays
+        ti      = req.tool - 1
+        deliver = delivery_day[req.ID]
+        pickup  = deliver + req.numDays
 
-        for dag in range(lever_dag, ophaal_dag + 1):   # incl. ophaaldag
-            dagelijks[dag][ti] += req.toolCount
+        for day in range(deliver, pickup + 1):   # incl. pickup day
+            daily[day][ti] += req.toolCount
 
-    # Piek per tooltype
+    # Peak per tool type
     tool_use = [0] * num_tools
-    for gebruik in dagelijks.values():
+    for usage in daily.values():
         for i in range(num_tools):
-            tool_use[i] = max(tool_use[i], gebruik[i])
+            tool_use[i] = max(tool_use[i], usage[i])
 
-    # ── 2. Voertuigen en afstand ─────────────────────────────────────
+    # ── 2. Vehicles and distance ─────────────────────────────────────
     max_vehicles       = 0
     total_vehicle_days = 0
     total_distance     = 0
 
-    for dag, routes in days_routes.items():
+    for day, routes in days_routes.items():
         max_vehicles        = max(max_vehicles, len(routes))
         total_vehicle_days += len(routes)
 
@@ -289,7 +281,7 @@ def compute_cost(inst, dist, deliver_day, days_routes):
                 stop_a = route[i]
                 stop_b = route[i + 1]
 
-                # 0 = depot, anders klantlocatie van dat verzoek
+                # 0 = depot, otherwise customer location of that request
                 node_a = inst.DepotCoordinate if stop_a == 0 \
                          else inst.Requests[abs(stop_a) - 1].node
                 node_b = inst.DepotCoordinate if stop_b == 0 \
@@ -297,7 +289,7 @@ def compute_cost(inst, dist, deliver_day, days_routes):
 
                 total_distance += dist[node_a][node_b]
 
-    # ── 3. Totale kosten ─────────────────────────────────────────────
+    # ── 3. Total cost ────────────────────────────────────────────────
     total_cost = (
           max_vehicles       * inst.VehicleCost
         + total_vehicle_days * inst.VehicleDayCost
@@ -309,65 +301,65 @@ def compute_cost(inst, dist, deliver_day, days_routes):
 
 
 # =============================================================================
-# STEP 2C — Oplossing schrijven
+# STEP 2C — Write solution
 # =============================================================================
 
-def write_solution(inst, dist, deliver_day, days_routes, output_path):
+def write_solution(inst, dist, delivery_day, days_routes, output_path):
     """
-    STEP 2C — Schrijf de oplossing in het officiële tab-gescheiden formaat.
+    STEP 2C — Write the solution in the official tab-separated format.
 
-    Elke route wordt geschreven als:
-        voertuignr  R  0  taak  0
-    (waarden gescheiden door tabs)
+    Each route is written as:
+        vehicle_nr  R  0  task  0
+    (values separated by tabs)
 
-    Geeft de totale kosten terug.
+    Returns the total cost.
     """
-    max_v, vdays, tool_use, afstand, kosten = compute_cost(
-        inst, dist, deliver_day, days_routes)
+    max_v, vdays, tool_use, distance, cost = compute_cost(
+        inst, dist, delivery_day, days_routes)
 
-    regels = [
+    lines = [
         f"DATASET = {inst.Dataset}",
         f"NAME = {inst.Name}",
         "",
         f"MAX_NUMBER_OF_VEHICLES = {max_v}",
         f"NUMBER_OF_VEHICLE_DAYS = {vdays}",
         f"TOOL_USE = {' '.join(str(t) for t in tool_use)}",
-        f"DISTANCE = {afstand}",
-        f"COST = {kosten}",
+        f"DISTANCE = {distance}",
+        f"COST = {cost}",
         "",
     ]
 
-    for dag in sorted(days_routes):
-        routes = days_routes[dag]
+    for day in sorted(days_routes):
+        routes = days_routes[day]
         if not routes:
             continue
-        regels.append(f"DAY = {dag}")
-        regels.append(f"NUMBER_OF_VEHICLES = {len(routes)}")
+        lines.append(f"DAY = {day}")
+        lines.append(f"NUMBER_OF_VEHICLES = {len(routes)}")
         for vi, route in enumerate(routes):
-            regels.append(f"{vi + 1}\tR\t" + "\t".join(str(x) for x in route))
-        regels.append("")
+            lines.append(f"{vi + 1}\tR\t" + "\t".join(str(x) for x in route))
+        lines.append("")
 
-    uitvoermap = os.path.dirname(output_path)
-    if uitvoermap:
-        os.makedirs(uitvoermap, exist_ok=True)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     with open(output_path, 'w') as f:
-        f.write("\n".join(regels))
+        f.write("\n".join(lines))
 
-    return kosten
+    return cost
 
 
 # =============================================================================
-# HOOFDFUNCTIE
+# MAIN FUNCTION
 # =============================================================================
 
 def solve(instance_path, output_path, verbose=True):
-    """Voer Step 2 en Step 3 uit voor één instantie."""
+    """Run Step 2 and Step 3 for a single instance."""
     inst = InstanceCVRPTWUI(instance_path)
     if not inst.isValid():
-        print(f"FOUT: ongeldige instantie {instance_path}")
-        for fout in inst.errorReport:
-            print(f"  {fout}")
+        print(f"ERROR: invalid instance {instance_path}")
+        for error in inst.errorReport:
+            print(f"  {error}")
         sys.exit(1)
 
     inst.calculateDistances()
@@ -377,35 +369,35 @@ def solve(instance_path, output_path, verbose=True):
         print(f"\n{'='*55}")
         print(f"  {os.path.basename(instance_path)}")
         print(f"{'='*55}")
-        print(f"  Dagen={inst.Days}  Verzoeken={len(inst.Requests)}"
-              f"  Klanten={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
+        print(f"  Days={inst.Days}  Requests={len(inst.Requests)}"
+              f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
 
     if verbose:
-        print("\n  [Step 2A] Leveringsdagen toewijzen (+ repair)...")
-    deliver_day = assign_delivery_days(inst)
+        print("\n  [Step 2A] Assigning delivery days (+ repair)...")
+    delivery_day = assign_delivery_days(inst)
 
     if verbose:
-        print("  [Step 2B] Routes bouwen (één truck per taak)...")
-    days_routes = build_routes(inst, deliver_day)
+        print("  [Step 2B] Building routes (one truck per task)...")
+    days_routes = build_routes(inst, delivery_day)
 
     if verbose:
-        print("  [Step 2C] Oplossing schrijven...")
-    kosten = write_solution(inst, dist, deliver_day, days_routes, output_path)
+        print("  [Step 2C] Writing solution...")
+    cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
 
     if verbose:
-        max_v, vdays, tool_use, afstand, _ = compute_cost(
-            inst, dist, deliver_day, days_routes)
-        print(f"\n  ── Kostenopbouw (Step 3) ──────────────────────────")
+        max_v, vdays, tool_use, distance, _ = compute_cost(
+            inst, dist, delivery_day, days_routes)
+        print(f"\n  ── Cost breakdown (Step 3) ────────────────────────")
         print(f"  VEHICLE_COST     x {max_v:>5} = {max_v * inst.VehicleCost:>18,}")
         print(f"  VEHICLE_DAY_COST x {vdays:>5} = {vdays * inst.VehicleDayCost:>18,}")
-        print(f"  DISTANCE_COST    x {afstand:>5} = {afstand * inst.DistanceCost:>18,}")
+        print(f"  DISTANCE_COST    x {distance:>5} = {distance * inst.DistanceCost:>18,}")
         for i, t in enumerate(inst.Tools):
             print(f"  Tool {t.ID} cost      x {tool_use[i]:>5} = {tool_use[i] * t.cost:>18,}")
         print(f"  {'─'*48}")
-        print(f"  TOTALE KOSTEN            = {kosten:>18,}")
-        print(f"  Bestand                  : {output_path}")
+        print(f"  TOTAL COST               = {cost:>18,}")
+        print(f"  File                     : {output_path}")
 
-    return kosten
+    return cost
 
 
 # =============================================================================
@@ -413,26 +405,26 @@ def solve(instance_path, output_path, verbose=True):
 # =============================================================================
 
 def solve_batch(instances_dir, solutions_dir, verbose=True):
-    """Los alle .txt-instanties in een map op."""
+    """Solve all .txt instances in a directory."""
     os.makedirs(solutions_dir, exist_ok=True)
-    bestanden = sorted(f for f in os.listdir(instances_dir) if f.endswith('.txt'))
-    if not bestanden:
-        print(f"Geen .txt-bestanden in: {instances_dir}")
+    files = sorted(f for f in os.listdir(instances_dir) if f.endswith('.txt'))
+    if not files:
+        print(f"No .txt files found in: {instances_dir}")
         return
-    resultaten = []
-    totaal     = 0
-    for b in bestanden:
-        k = solve(
-            os.path.join(instances_dir, b),
-            os.path.join(solutions_dir, b.replace('.txt', '_solution.txt')),
+    results = []
+    total   = 0
+    for filename in files:
+        cost = solve(
+            os.path.join(instances_dir, filename),
+            os.path.join(solutions_dir, filename.replace('.txt', '_solution.txt')),
             verbose=verbose
         )
-        resultaten.append((b, k))
-        totaal += k
-    print(f"\n{'='*60}\nOVERZICHT\n{'='*60}")
-    for b, k in resultaten:
-        print(f"  {b:<45}  {k:>15,}")
-    print(f"{'─'*60}\n  Totaal: {totaal:>51,}\n{'='*60}")
+        results.append((filename, cost))
+        total += cost
+    print(f"\n{'='*60}\nOVERVIEW\n{'='*60}")
+    for filename, cost in results:
+        print(f"  {filename:<45}  {cost:>15,}")
+    print(f"{'─'*60}\n  Total: {total:>51,}\n{'='*60}")
 
 
 # =============================================================================
@@ -440,14 +432,14 @@ def solve_batch(instances_dir, solutions_dir, verbose=True):
 # =============================================================================
 
 def run_validator(instance_path, solution_path, validator_dir=None):
-    """Roep de officiële Validate.py aan."""
+    """Call the official Validate.py."""
     if validator_dir is None:
         validator_dir = os.path.dirname(os.path.abspath(__file__))
     validate_py = os.path.join(validator_dir, 'Validate.py')
     if not os.path.isfile(validate_py):
-        print(f"[!] Validate.py niet gevonden in: {validator_dir}")
+        print(f"[!] Validate.py not found in: {validator_dir}")
         return
-    print("\n[Validator] Oplossing controleren...")
+    print("\n[Validator] Checking solution...")
     r = subprocess.run(
         [sys.executable, validate_py, '-i', instance_path, '-s', solution_path],
         capture_output=True, text=True
@@ -465,8 +457,8 @@ def main():
     parser = argparse.ArgumentParser(
         prog="Solver.py",
         description=(
-            "VeRoLog 2017 — Step 2 (Greedy Baseline) + Step 3 (Kosten)\n\n"
-            "Voorbeelden:\n"
+            "VeRoLog 2017 — Step 2 (Greedy Baseline) + Step 3 (Cost)\n\n"
+            "Examples:\n"
             "  python Solver.py -i instances/testInstance.txt -o solutions/sol.txt\n"
             "  python Solver.py -i instances/testInstance.txt"
             " -o solutions/sol.txt --validate\n"
@@ -474,11 +466,11 @@ def main():
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('-i', '--instance',    metavar='BESTAND')
-    parser.add_argument('-o', '--output',      metavar='BESTAND')
-    parser.add_argument('--batch', nargs=2,    metavar=('INST_MAP', 'OPL_MAP'))
+    parser.add_argument('-i', '--instance',    metavar='FILE')
+    parser.add_argument('-o', '--output',      metavar='FILE')
+    parser.add_argument('--batch', nargs=2,    metavar=('INST_DIR', 'SOL_DIR'))
     parser.add_argument('--validate',          action='store_true')
-    parser.add_argument('--validator-dir',     metavar='MAP', dest='validator_dir')
+    parser.add_argument('--validator-dir',     metavar='DIR', dest='validator_dir')
     parser.add_argument('--seed', type=int,    default=42)
     parser.add_argument('--quiet',             action='store_true')
 
@@ -499,34 +491,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
