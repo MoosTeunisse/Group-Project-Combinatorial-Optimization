@@ -248,22 +248,8 @@ def compute_cost(inst, dist, delivery_day, days_routes):
     """
     num_tools = len(inst.Tools)
 
-    # ── 1. Daily tool usage ──────────────────────────────────────────
-    daily = defaultdict(lambda: [0] * num_tools)
-
-    for req in inst.Requests:
-        ti      = req.tool - 1
-        deliver = delivery_day[req.ID]
-        pickup  = deliver + req.numDays
-
-        for day in range(deliver, pickup + 1):   # incl. pickup day
-            daily[day][ti] += req.toolCount
-
-    # Peak per tool type
-    tool_use = [0] * num_tools
-    for usage in daily.values():
-        for i in range(num_tools):
-            tool_use[i] = max(tool_use[i], usage[i])
+    # ── 1. Daily tool usage for objective ───────────────────────────
+    tool_use = compute_tool_use_exact_validator(inst, days_routes)
 
     # ── 2. Vehicles and distance ─────────────────────────────────────
     max_vehicles       = 0
@@ -296,6 +282,71 @@ def compute_cost(inst, dist, delivery_day, days_routes):
     )
 
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
+
+def compute_tool_use_exact_validator(inst, days_routes):
+    """
+    Exact copy of the validator's tool-use logic
+    """
+    toolStatus = [0] * len(inst.Tools)
+    toolUse = [0] * len(inst.Tools)
+
+    for dayNumber in range(1, inst.Days + 1):
+        routes = days_routes.get(dayNumber, [])
+
+        day_calcStartDepot = [0] * len(inst.Tools)
+        day_calcFinishDepot = [0] * len(inst.Tools)
+
+        for route in routes:
+            currentTools = [0] * len(inst.Tools)
+            depotVisits = [[0] * len(inst.Tools)]
+            nodeVisits = []
+            lastNode = None
+
+            for node in route:
+                if node == 0:
+                    if lastNode is not None:
+                        bringTools = [0] * len(inst.Tools)
+                        sumTools = [0] * len(inst.Tools)
+
+                        for tools in nodeVisits:
+                            sumTools = [max(x) for x in zip(tools, sumTools)]
+                            bringTools = [min(x) for x in zip(bringTools, tools)]
+                            sumTools = [max(0, a) for a in sumTools]
+
+                        depotVisits[-1] = [sum(x) for x in zip(bringTools, depotVisits[-1])]
+                        depotVisits.append([b - a for a, b in zip(bringTools, nodeVisits[-1])])
+
+                        currentTools = [0] * len(inst.Tools)
+                        nodeVisits = []
+
+                elif node > 0:
+                    req = inst.Requests[node - 1]
+                    currentTools[req.tool - 1] -= req.toolCount
+
+                elif node < 0:
+                    node = -node
+                    req = inst.Requests[node - 1]
+                    currentTools[req.tool - 1] += req.toolCount
+
+                nodeVisits.append(copy.copy(currentTools))
+                lastNode = node
+
+            visitTotal = [0] * len(inst.Tools)
+            totalUsedAtStart = [0] * len(inst.Tools)
+
+            for visit in depotVisits:
+                visitTotal = [sum(x) for x in zip(visit, visitTotal)]
+                totalUsedAtStart = [b - min(0, a) for a, b in zip(visitTotal, totalUsedAtStart)]
+                visitTotal = [max(0, a) for a in visitTotal]
+
+            day_calcStartDepot = [b - a for a, b in zip(totalUsedAtStart, day_calcStartDepot)]
+            day_calcFinishDepot = [b + a for a, b in zip(visitTotal, day_calcFinishDepot)]
+
+        toolStatus = [sum(x) for x in zip(toolStatus, day_calcStartDepot)]
+        toolUse = [max(-a, b) for a, b in zip(toolStatus, toolUse)]
+        toolStatus = [sum(x) for x in zip(toolStatus, day_calcFinishDepot)]
+
+    return toolUse
 
 # =============================================================================
 # STEP 2C — Write solution
