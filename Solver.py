@@ -86,8 +86,8 @@ def solve(instance_path, output_path, verbose=True):
 
     if verbose:
         print("  [Step 5] Building routes (Parallel)...")
-    # Greedy: days_routes = build_routes_baseline(inst, delivery_day)
-    # Sequential: days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
+    # days_routes = build_routes_baseline(inst, delivery_day)
+    # days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
     days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
 
     if verbose:
