@@ -28,12 +28,24 @@ def build_routes_parallel(inst, dist, task_list):
                 best_insertion_per_task[task] = (best_r, best_p, best_cost)
             if second_best_cost is not None:
                 second_best_insertion_per_task[task] = second_best_cost  
-
-        # compute regret for each task
-        # pick task with max regret
-        # insert it
-        # if no feasible insertion exists anywhere, open new route
-    
+        # Check if routes match the number of unrouted tasks, if not add an empty route and restart
+        if len(best_insertion_per_task) < len(unrouted):
+            routes.append([])
+            continue
+        # Compute regrets and choose task with highest regret
+        task_regrets = []
+        for task in unrouted:
+            best_cost = best_insertion_per_task[task][2]
+            if task in best_insertion_per_task and task not in second_best_insertion_per_task:
+                regret = float('inf')
+            else:
+                second_best_cost = second_best_insertion_per_task[task]
+                regret = second_best_cost - best_cost
+            task_regrets.append((regret, task))
+        chosen_task = max(task_regrets)[1]
+        chosen_r, chosen_p, chosen_cost = best_insertion_per_task[chosen_task]
+        routes[chosen_r].insert(chosen_p, chosen_task)
+        unrouted.remove(chosen_task)
     return [([0] + r + [0]) for r in routes]
 
 def build_routes_parallel_regret(inst, delivery_day, dist):
