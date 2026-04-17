@@ -137,13 +137,26 @@ def is_route_feasible(inst, dist, route_tasks):
 # Insertion heuristic for sequential routing
 # =============================================================================
 
+def get_insertion_penalty(inst):
+    vehicle_importance = inst.VehicleCost + inst.VehicleDayCost
+    distance_importance = inst.DistanceCost
+    
+    total = vehicle_importance + distance_importance
+    if total == 0:
+        return 1.0
+    
+    vehicle_ratio = vehicle_importance / total
+    
+    return vehicle_ratio
+
 def best_insertion_in_route(inst, dist, route_tasks, task):
     """Find the best position to insert a task into a route while maintaining feasibility."""
     
     old_dist = route_distance(inst, dist, route_tasks)
+    penalty_weight = get_insertion_penalty(inst)
     
     best_pos = None
-    best_extra = None
+    best_score = None
     
     for pos in range(len(route_tasks) + 1):
         trial = route_tasks[:pos] + [task] + route_tasks[pos:]
@@ -154,11 +167,16 @@ def best_insertion_in_route(inst, dist, route_tasks, task):
         new_dist = route_distance(inst, dist, trial)
         extra = new_dist - old_dist
         
-        if best_extra is None or extra < best_extra:
-            best_extra = extra
+        load_vec = required_initial_load(inst, trial)
+        load_weight = total_load_weight(inst, load_vec)
+        
+        score = extra + penalty_weight * load_weight
+        
+        if best_score is None or score < best_score:
+            best_score = extra
             best_pos = pos
             
-    return best_pos, best_extra
+    return best_pos, best_score
 
 # =============================================================================
 # Pivot selection for sequential routing
