@@ -1,37 +1,3 @@
-"""
-=============================================================================
-VeRoLog 2017  —  Step 2: Greedy Baseline  +  Step 3: Cost Calculator
-=============================================================================
-
-FILE STRUCTURE (place all files in the same directory):
-    Solver.py              <-- THIS FILE
-    baseCVRPTWUI.py         <-- from the zip, DO NOT modify
-    InstanceCVRPTWUI.py     <-- from the zip, DO NOT modify
-    Validate.py             <-- from the zip, DO NOT modify
-
-USAGE:
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt --validate
-    python Solver.py --batch instances/ solutions/
-
-WHAT DOES THIS FILE DO?
-
-  STEP 2 — Greedy Baseline (a valid solution, however expensive):
-    2A. Assign to each request the earliest possible delivery day
-        while respecting tool availability.
-        If that fails: repair violations iteratively.
-    2B. Send a separate truck for each task: depot -> customer -> depot.
-        One task per truck = never capacity or distance issues.
-    2C. Write the result in the official tab-separated format.
-
-  STEP 3 — Cost Calculation:
-    - VEHICLE_COST      × max vehicles on a single day
-    - VEHICLE_DAY_COST  × total vehicle-days
-    - DISTANCE_COST     × total travel distance
-    - tool.cost         × peak daily tool usage per type
-=============================================================================
-"""
-
 import math
 import os
 import sys
@@ -44,28 +10,28 @@ from collections import defaultdict
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
 
-# =============================================================================
-# HELPER FUNCTION: distance matrix
-# =============================================================================
+def calculate_all_distances(instance_data):
 
-def build_dist_matrix(inst):
-    """
-    Build an n×n distance matrix based on inst.Coordinates.
-    Uses floor of Euclidean distance, as required by the problem.
-    """
-    n    = len(inst.Coordinates)
-    dist = [[0] * n for _ in range(n)]
-    for i in range(n):
-        ci = inst.Coordinates[i]
-        for j in range(i + 1, n):
-            cj = inst.Coordinates[j]
-            d  = int(math.floor(math.sqrt(
-                (ci.X - cj.X) ** 2 + (ci.Y - cj.Y) ** 2
-            )))
-            dist[i][j] = d
-            dist[j][i] = d
-    return dist
+    # n    = len(instance_data.Coordinates)
+    
+    all_locations=instance_data.Coordinates
+    amount_of_locations=len(all_locations)
+    row_with_zero=[0] * amount_of_locations
+    distance_table = [row_with_zero[:] for _ in range(amount_of_locations)]
+    for i in range(amount_of_locations):
+       # ci = instance_data.Coordinates[i]
+        for j in range(i + 1, amount_of_locations):
+            firstX, firstY=all_locations[i].X, all_locations[i].Y
+            secondX, secondY=all_locations[j].X, all_locations[j].Y
+          #  cj = instance_data.Coordinates[j]
+            difference_X=firstX- secondX
+            difference_Y= firstY- secondY
 
+            distance  = int(math.floor(math.sqrt((difference_X) ** 2 + 
+                                            (difference_Y) ** 2)))
+            distance_table[i][j] = distance
+            distance_table[j][i] = distance
+    return distance_table
 
 # =============================================================================
 # STEP 2A — Assign delivery days + repair
@@ -185,7 +151,6 @@ def assign_delivery_days(inst):
 
     return delivery_day
 
-
 # =============================================================================
 # STEP 2B — Build routes: one truck per task
 # =============================================================================
@@ -224,7 +189,6 @@ def build_routes(inst, delivery_day):
         days_routes[day] = routes
 
     return days_routes
-
 
 # =============================================================================
 # STEP 3 — Cost calculation
@@ -299,7 +263,6 @@ def compute_cost(inst, dist, delivery_day, days_routes):
 
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
 
-
 # =============================================================================
 # STEP 2C — Write solution
 # =============================================================================
@@ -348,7 +311,6 @@ def write_solution(inst, dist, delivery_day, days_routes, output_path):
 
     return cost
 
-
 # =============================================================================
 # MAIN FUNCTION
 # =============================================================================
@@ -363,7 +325,7 @@ def solve(instance_path, output_path, verbose=True):
         sys.exit(1)
 
     inst.calculateDistances()
-    dist = build_dist_matrix(inst)
+    dist = calculate_all_distances(inst)
 
     if verbose:
         print(f"\n{'='*55}")
@@ -399,7 +361,6 @@ def solve(instance_path, output_path, verbose=True):
 
     return cost
 
-
 # =============================================================================
 # BATCH
 # =============================================================================
@@ -426,7 +387,6 @@ def solve_batch(instances_dir, solutions_dir, verbose=True):
         print(f"  {filename:<45}  {cost:>15,}")
     print(f"{'─'*60}\n  Total: {total:>51,}\n{'='*60}")
 
-
 # =============================================================================
 # VALIDATOR
 # =============================================================================
@@ -447,7 +407,6 @@ def run_validator(instance_path, solution_path, validator_dir=None):
     print(r.stdout)
     if r.stderr:
         print("STDERR:", r.stderr)
-
 
 # =============================================================================
 # CLI
@@ -488,6 +447,6 @@ def main():
     else:
         parser.print_help()
 
-
 if __name__ == '__main__':
     main()
+
