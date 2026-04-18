@@ -33,127 +33,108 @@ def calculate_all_distances(instance_data):
             distance_table[j][i] = distance
     return distance_table
 
-# =============================================================================
-# STEP 2A — Assign delivery days + repair
-# =============================================================================
+# 1. Check of een dag haalbaar is (klein, duidelijk)
+def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
+    last_day=given_day + request.numDays + 1
+    for day in range(given_day, last_day):
+        total_amount_of_tools_of_type=occupied_tools[(day, request.tool)] + request.toolCount
+        if total_amount_of_tools_of_type > maximum_amount_of_tools_of_type:
+            return False
+    return True
+# 2. Vind de beste dag voor een request (bevat de noodoplossing)
+def obtain_optimal_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
+    """Find earliest feasible day, or day with lowest peak."""
+    starting_day=request.fromDay
+    ending_day=request.toDay + 1
+    for day in range(starting_day, ending_day):
+        if possible_on_day(request, day, occupied_tools, maximum_amount_of_tools_of_type):
+            return day
+    else:
+    # Emergency fallback
+     all_deleverable_days=range(request.fromDay, request.toDay + 1)
+     def score(pos_day):
+      starting_range=pos_day
+      ending_range=pos_day + request.numDays + 1
+      return max(occupied_tools[(d, request.tool)] 
+                             for d in range(starting_range, ending_range))
+     
+     return min(all_deleverable_days, key=score)
+     
+def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_of_tools_of_type):
+    """Assign delivery day and update usage."""
+    the_day_of_delivery[request.ID]=obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
+    the_day_when_delivery=the_day_of_delivery[request.ID]
+    occupancy_days=request.numDays + 1
+    #the_day_of_delivery[request.ID] = call_optimal
+    for day in range(the_day_when_delivery, the_day_when_delivery + occupancy_days):
+        comb_day_with_tool_type=(day, request.tool)
+        occupied_tools[comb_day_with_tool_type] += request.toolCount
+# 4. Zoek alle overtredingen
+def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
+
+    all_problems = {}
+    for (day, type_of_tool), utilize in occupied_tools.items():
+     equal_type=(type_of_tool == type_of_tool_occupied)
+     overuse_tools=(utilize > list_of_tools[type_of_tool_occupied - 1].amount)
+     if equal_type and overuse_tools:
+                all_problems[(day, type_of_tool_occupied)] = utilize
+    return all_problems
+def old_new_request(request, utilize, the_day_of_delivery, maximum_amount_of_tools):
+    start = the_day_of_delivery[request.ID]
+    end= start + request.numDays + 1
+    
+    for days in range(start, end):
+       day_comb_tool_type = (days, request.tool)
+       utilize[day_comb_tool_type] -= request.toolCount    
+    request_placer(request, utilize, the_day_of_delivery, maximum_amount_of_tools)
+
+
+def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
+    """Try to fix one violation by shifting a random contributor."""
+    day_of_problem = problem[0]    
+    problem_tool = problem[1]   
+    tool_max = tools[problem_tool - 1].amount
+    causes = []
+    for random_request_list in requests:
+        equal_tool = (random_request_list.tool == problem_tool)
+        request_on_problemday = (day_of_problem in range(the_day_of_delivery[random_request_list.ID], 
+                                        the_day_of_delivery[random_request_list.ID] + random_request_list.numDays + 1))
+        if equal_tool and request_on_problemday:
+            causes.append(random_request_list)
+    if not causes:
+        return False
+    
+   # random_request_list = random.choice(causes)
+    old_new_request(random.choice(causes), utilize, the_day_of_delivery, tool_max)
+
+
 
 def assign_delivery_days(inst):
-    """
-    STEP 2A — Assign to each request the earliest possible delivery day
-    so that tool availability is not exceeded.
-
-    Phase 1 – Greedy assignment:
-      - Sort requests by earliest deadline (strictest first)
-      - Choose the earliest day in [fromDay, toDay] that is feasible
-      - If no day is feasible: choose the day with the lowest peak
-        (emergency fallback — may temporarily cause a violation)
-
-    Phase 2 – Repair:
-      - If tool violations remain (due to emergency fallbacks),
-        iteratively shift offenders to better days until
-        all violations are resolved.
-
-    Validator tool usage definition:
-      Tools count as 'outside depot' from delivery day through pickup day
-      inclusive: range(delivery_day, pickup_day + 1)
-
-    Returns: dict  request ID -> delivery day
-    """
-    usage = defaultdict(int)   # (day, tool_id) -> occupancy
+    """Assign delivery days using greedy + repair."""
+    usage = defaultdict(int)
     delivery_day = {}
-
-    # ── Phase 1: Greedy assignment ───────────────────────────────────
+    
+    # Phase 1: Greedy assignment
     sorted_requests = sorted(inst.Requests,
                              key=lambda r: (r.toDay, r.toDay - r.fromDay))
-
+    
     for req in sorted_requests:
         tool_max = inst.Tools[req.tool - 1].amount
-        chosen   = None
-
-        for day in range(req.fromDay, req.toDay + 1):
-            occupied = range(day, day + req.numDays + 1)   # incl. pickup day
-            if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in occupied):
-                chosen = day
-                break
-
-        if chosen is None:
-            # Emergency fallback: day with lowest peak occupancy
-            chosen = min(
-                range(req.fromDay, req.toDay + 1),
-                key=lambda day: max(
-                    usage[(d, req.tool)]
-                    for d in range(day, day + req.numDays + 1)
-                )
-            )
-
-        delivery_day[req.ID] = chosen
-        for d in range(chosen, chosen + req.numDays + 1):
-            usage[(d, req.tool)] += req.toolCount
-
-    # ── Phase 2: Repair ──────────────────────────────────────────────
+        request_placer(req, usage, delivery_day, tool_max)
+    
+    # Phase 2: Repair
     for _ in range(5000):
-        # Find all violations
-        violations = {
-            (d, t): v
-            for (d, t), v in usage.items()
-            if v > inst.Tools[t - 1].amount
-        }
-        if not violations:
-            break   # done
-
-        # Pick a random violation
-        (vday, vtool), _ = random.choice(list(violations.items()))
-        tool_max = inst.Tools[vtool - 1].amount
-
-        # Find requests contributing to this violation
-        contributors = [
-            req for req in inst.Requests
-            if req.tool == vtool
-            and vday in range(delivery_day[req.ID],
-                              delivery_day[req.ID] + req.numDays + 1)
-        ]
-        if not contributors:
-            break
-
-        # Pick a random contributor and try to shift it
-        req = random.choice(contributors)
-        cur = delivery_day[req.ID]
-
-        # Remove current contribution
-        for d in range(cur, cur + req.numDays + 1):
-            usage[(d, req.tool)] -= req.toolCount
-
-        # Find a feasible alternative day
-        alternatives = list(range(req.fromDay, req.toDay + 1))
-        random.shuffle(alternatives)
-        chosen = None
-
-        for day in alternatives:
-            if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in range(day, day + req.numDays + 1)):
-                chosen = day
+        for tool_type in range(1, len(inst.Tools) + 1):
+            violations = overuse(usage, inst.Tools, tool_type)
+            if violations:
+                for problem in violations.keys():
+                    fix_a_problem(problem, usage, delivery_day, inst.Requests, inst.Tools)
+                    break  # repair één en dan opnieuw
                 break
-
-        if chosen is None:
-            # No perfect day: choose day with lowest peak
-            chosen = min(
-                alternatives,
-                key=lambda day: max(
-                    usage[(d, req.tool)]
-                    for d in range(day, day + req.numDays + 1)
-                )
-            )
-
-        delivery_day[req.ID] = chosen
-        for d in range(chosen, chosen + req.numDays + 1):
-            usage[(d, req.tool)] += req.toolCount
-
+        else:
+            break  # geen violations gevonden
+    
     return delivery_day
-
-# =============================================================================
-# STEP 2B — Build routes: one truck per task
-# =============================================================================
 
 def build_routes(inst, delivery_day):
     """
