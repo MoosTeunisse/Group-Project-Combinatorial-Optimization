@@ -168,75 +168,68 @@ def maker_of_routes(instance, the_day_of_delivery):
 # STEP 3 — Cost calculation
 # =============================================================================
 
-def compute_cost(inst, dist, delivery_day, days_routes):
-    """
-    STEP 3 — Calculate the total cost of the solution.
+def how_many_tooltype_busyday(instance, the_day_of_delivery):
+    """Calculate peak tool usage per tool type."""
+   # num_tools = len(instance.Tools)
+    dic_keep_run_tooltype = defaultdict(lambda: [0] * len(instance.Tools))
+    
+    for i in range(len(instance.Requests)):
+        #req = instance.Requests[i]
+        #ti = instance.Requests[i].tool - 1
+        #deliver = the_day_of_delivery[instance.Requests[i].ID]
+        #pickup = the_day_of_delivery[instance.Requests[i].ID] + instance.Requests[i].numDays
+        am_of_days=len(list(range(the_day_of_delivery[instance.Requests[i].ID],
+                                       the_day_of_delivery[instance.Requests[i].ID] )))
+        for j in range (am_of_days+ instance.Requests[i].numDays + 1):
+                     cal_day = list(range(the_day_of_delivery[instance.Requests[i].ID], 
+                      the_day_of_delivery[instance.Requests[i].ID]
+                              + instance.Requests[i].numDays + 1))[j]
+                     dic_keep_run_tooltype[cal_day][instance.Requests[i].tool - 1] += instance.Requests[i].toolCount
 
-    Cost formula (from the problem):
-        VEHICLE_COST      x  max vehicles used on a single day
-        VEHICLE_DAY_COST  x  total vehicle-days (sum across all days)
-        DISTANCE_COST     x  total travel distance
-        tool[i].cost      x  peak daily usage of tool type i
+    
+    return [max(dic_keep_run_tooltype[d][i] for d in dic_keep_run_tooltype) for i in range(len(instance.Tools))]
 
-    Tool usage (validator definition):
-      Tools count as outside-depot from delivery day through pickup day
-      inclusive: range(delivery_day, pickup_day + 1)
 
-    Returns:
-        (max_vehicles, total_vehicle_days, tool_use_list,
-         total_distance, total_cost)
-    """
-    num_tools = len(inst.Tools)
-
-    # ── 1. Daily tool usage ──────────────────────────────────────────
-    daily = defaultdict(lambda: [0] * num_tools)
-
-    for req in inst.Requests:
-        ti      = req.tool - 1
-        deliver = delivery_day[req.ID]
-        pickup  = deliver + req.numDays
-
-        for day in range(deliver, pickup + 1):   # incl. pickup day
-            daily[day][ti] += req.toolCount
-
-    # Peak per tool type
-    tool_use = [0] * num_tools
-    for usage in daily.values():
-        for i in range(num_tools):
-            tool_use[i] = max(tool_use[i], usage[i])
-
-    # ── 2. Vehicles and distance ─────────────────────────────────────
-    max_vehicles       = 0
+def calc_vehicle_stats(inst, dist, days_routes):
+    """Calculate max vehicles, total vehicle days, and total distance."""
+    max_vehicles = 0
     total_vehicle_days = 0
-    total_distance     = 0
-
+    total_distance = 0
+    
     for day, routes in days_routes.items():
-        max_vehicles        = max(max_vehicles, len(routes))
+        max_vehicles = max(max_vehicles, len(routes))
         total_vehicle_days += len(routes)
-
+        
         for route in routes:
             for i in range(len(route) - 1):
                 stop_a = route[i]
                 stop_b = route[i + 1]
-
-                # 0 = depot, otherwise customer location of that request
-                node_a = inst.DepotCoordinate if stop_a == 0 \
-                         else inst.Requests[abs(stop_a) - 1].node
-                node_b = inst.DepotCoordinate if stop_b == 0 \
-                         else inst.Requests[abs(stop_b) - 1].node
-
+                
+                node_a = inst.DepotCoordinate if stop_a == 0 else inst.Requests[abs(stop_a) - 1].node
+                node_b = inst.DepotCoordinate if stop_b == 0 else inst.Requests[abs(stop_b) - 1].node
+                
                 total_distance += dist[node_a][node_b]
+    
+    return max_vehicles, total_vehicle_days, total_distance
 
-    # ── 3. Total cost ────────────────────────────────────────────────
+
+def compute_cost(inst, dist, delivery_day, days_routes):
+    """Calculate total cost and return all components."""
+    # Step 1: Tool usage
+    tool_use = how_many_tooltype_busyday(inst, delivery_day)
+    
+    # Step 2: Vehicle stats
+    max_vehicles, total_vehicle_days, total_distance = calc_vehicle_stats(inst, dist, days_routes)
+    
+    # Step 3: Total cost
     total_cost = (
           max_vehicles       * inst.VehicleCost
         + total_vehicle_days * inst.VehicleDayCost
         + total_distance     * inst.DistanceCost
-        + sum(tool_use[i] * inst.Tools[i].cost for i in range(num_tools))
+        + sum(tool_use[i] * inst.Tools[i].cost for i in range(len(inst.Tools)))
     )
-
+    
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
-
 # =============================================================================
 # STEP 2C — Write solution
 # =============================================================================
