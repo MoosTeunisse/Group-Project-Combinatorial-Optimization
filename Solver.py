@@ -143,40 +143,26 @@ def assign_delivery_days(instance):
                 break
 
     return the_day_del  
-def build_routes(inst, delivery_day):
-    """
-    STEP 2B — Send a separate truck for each task.
+def maker_of_routes(instance, the_day_of_delivery):
 
-    Each truck drives: depot -> customer -> depot
-    Route = [0, task, 0]   where 0 = depot
+    delivery_pickup = defaultdict(list)
 
-    Positive task (+r) = delivery of request r
-    Negative task (-r) = pickup of request r
+    amount_of_the_requests=len(instance.Requests)
+    for i in range(amount_of_the_requests):
 
-    This is the simplest solution that always works:
-      - Never capacity issues (one task per truck)
-      - Never distance issues (every customer is reachable)
+        req_equals_with_id=instance.Requests[i].ID
+        delivery_pickup[the_day_of_delivery[req_equals_with_id]].append(+req_equals_with_id)  
+        delivery_pickup[the_day_of_delivery[req_equals_with_id] + instance.Requests[i].numDays].append(-req_equals_with_id)   
 
-    Returns: dict  day -> list of routes
-    """
-    day_tasks = defaultdict(list)
 
-    for req in inst.Requests:
-        deliver = delivery_day[req.ID]
-        pickup  = deliver + req.numDays
 
-        day_tasks[deliver].append(+req.ID)   # delivery
-        day_tasks[pickup].append(-req.ID)    # pickup
-
-    days_routes = {}
-    for day, tasks in sorted(day_tasks.items()):
-        routes = []
-        for task in tasks:
-            route = [0, task, 0]   # depot -> customer -> depot
-            routes.append(route)
-        days_routes[day] = routes
-
-    return days_routes
+    route=lambda job: [0, job, 0]
+    route_every_time=lambda job_on_day: [route(job) for job in job_on_day]
+    order_pickup= sorted(delivery_pickup.items())
+    return {
+    d: route_every_time(jobs)
+    for d, jobs in order_pickup 
+}
 
 # =============================================================================
 # STEP 3 — Cost calculation
@@ -328,7 +314,7 @@ def solve(instance_path, output_path, verbose=True):
 
     if verbose:
         print("  [Step 2B] Building routes (one truck per task)...")
-    days_routes = build_routes(inst, delivery_day)
+    days_routes = maker_of_routes(inst, delivery_day)
 
     if verbose:
         print("  [Step 2C] Writing solution...")
