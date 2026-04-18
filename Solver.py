@@ -37,12 +37,12 @@ def calculate_all_distances(instance_data):
 def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
     last_day=given_day + request.numDays + 1
     for day in range(given_day, last_day):
-        total_amount_of_tools_of_type=occupied_tools[(day, request.tool)] + request.toolCount
+        total_amount_of_tools_of_type=occupied_tools.get((day, request.tool),0) + request.toolCount
         if total_amount_of_tools_of_type > maximum_amount_of_tools_of_type:
             return False
     return True
 # 2. Vind de beste dag voor een request (bevat de noodoplossing)
-def obtain_optimal_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
+def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type):
     """Find earliest feasible day, or day with lowest peak."""
     starting_day=request.fromDay
     ending_day=request.toDay + 1
@@ -55,7 +55,7 @@ def obtain_optimal_day(request, given_day, occupied_tools, maximum_amount_of_too
      def score(pos_day):
       starting_range=pos_day
       ending_range=pos_day + request.numDays + 1
-      return max(occupied_tools[(d, request.tool)] 
+      return max(occupied_tools.get((d, request.tool), 0) 
                              for d in range(starting_range, ending_range))
      
      return min(all_deleverable_days, key=score)
@@ -109,33 +109,38 @@ def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
 
 
 
-def assign_delivery_days(inst):
+def assign_delivery_days(instance):
     """Assign delivery days using greedy + repair."""
-    usage = defaultdict(int)
-    delivery_day = {}
+    utilize = defaultdict(int)
+    the_day_del = {}
     
     # Phase 1: Greedy assignment
-    sorted_requests = sorted(inst.Requests,
-                             key=lambda r: (r.toDay, r.toDay - r.fromDay))
     
-    for req in sorted_requests:
-        tool_max = inst.Tools[req.tool - 1].amount
-        request_placer(req, usage, delivery_day, tool_max)
+    priority=lambda z: (z.toDay, z.toDay - z.fromDay)
+
+    for i, request in enumerate (sorted(instance.Requests,
+                             key=priority)):
+       # tool_max = instance.Tools[request.tool - 1].amount
+        request_placer(request, utilize, the_day_del, instance.Tools[request.tool - 1].amount)
     
     # Phase 2: Repair
-    for _ in range(5000):
-        for tool_type in range(1, len(inst.Tools) + 1):
-            violations = overuse(usage, inst.Tools, tool_type)
-            if violations:
-                for problem in violations.keys():
-                    fix_a_problem(problem, usage, delivery_day, inst.Requests, inst.Tools)
-                    break  # repair één en dan opnieuw
-                break
-        else:
-            break  # geen violations gevonden
-    
-    return delivery_day
+    tries_to_repare=0
+    maxum_repair_attempts=5000
+    available_problem=True
 
+    while tries_to_repare < maxum_repair_attempts:
+        tries_to_repare+=1
+        available_problem=False
+        end_range=len(instance.Tools) + 1
+        for i in range(1, end_range):
+            problems = overuse(utilize, instance.Tools, i)
+            if problems:
+                available_problem=True
+                problem=list(problems.keys())[0]  # (day, tool)
+                fix_a_problem(problem, utilize, the_day_del, instance.Requests, instance.Tools)
+                break
+
+    return the_day_del  
 def build_routes(inst, delivery_day):
     """
     STEP 2B — Send a separate truck for each task.
@@ -431,3 +436,4 @@ def main():
 if __name__ == '__main__':
     main()
 
+ 
