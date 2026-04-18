@@ -68,17 +68,19 @@ def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_
     #the_day_of_delivery[request.ID] = call_optimal
     for day in range(the_day_when_delivery, the_day_when_delivery + occupancy_days):
         comb_day_with_tool_type=(day, request.tool)
-        occupied_tools[comb_day_with_tool_type] += request.toolCount
+        new_total=occupied_tools.get(comb_day_with_tool_type, 0) + request.toolCount
+        occupied_tools[comb_day_with_tool_type] = new_total
 # 4. Zoek alle overtredingen
 def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
 
     all_problems = {}
-    for (day, type_of_tool), utilize in occupied_tools.items():
+    for (day, type_of_tool), utilize_user in occupied_tools.items():
      equal_type=(type_of_tool == type_of_tool_occupied)
-     overuse_tools=(utilize > list_of_tools[type_of_tool_occupied - 1].amount)
+     overuse_tools=(utilize_user > list_of_tools[type_of_tool_occupied - 1].amount)
      if equal_type and overuse_tools:
-                all_problems[(day, type_of_tool_occupied)] = utilize
+                all_problems[(day, type_of_tool_occupied)] = utilize_user
     return all_problems
+
 def old_new_request(request, utilize, the_day_of_delivery, maximum_amount_of_tools):
     start = the_day_of_delivery[request.ID]
     end= start + request.numDays + 1
@@ -86,7 +88,7 @@ def old_new_request(request, utilize, the_day_of_delivery, maximum_amount_of_too
     for days in range(start, end):
        day_comb_tool_type = (days, request.tool)
        utilize[day_comb_tool_type] -= request.toolCount    
-    request_placer(request, utilize, the_day_of_delivery, maximum_amount_of_tools)
+    request_placer(request,the_day_of_delivery, utilize,  maximum_amount_of_tools)
 
 
 def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
@@ -121,7 +123,7 @@ def assign_delivery_days(instance):
     for i, request in enumerate (sorted(instance.Requests,
                              key=priority)):
        # tool_max = instance.Tools[request.tool - 1].amount
-        request_placer(request, utilize, the_day_del, instance.Tools[request.tool - 1].amount)
+        request_placer(request,the_day_del, utilize,  instance.Tools[request.tool - 1].amount)
     
     # Phase 2: Repair
     tries_to_repare=0
