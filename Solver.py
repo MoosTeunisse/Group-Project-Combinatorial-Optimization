@@ -257,49 +257,43 @@ def final_calculate_all_costs(instance, distance, the_day_of_delivery, route_of_
 # STEP 2C — Write solution
 # =============================================================================
 
-def write_solution(inst, dist, delivery_day, days_routes, output_path):
-    """
-    STEP 2C — Write the solution in the official tab-separated format.
+def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_given_day, file_referrer):
 
-    Each route is written as:
-        vehicle_nr  R  0  task  0
-    (values separated by tabs)
+    res = final_calculate_all_costs(instance, distance, the_day_of_delivery, route_of_given_day)
+  #  res_biggest_am_of_veh, res_veh_all_in_total, res_max_of_tool, res_aquire_totaldis, res_cal_all_costs_total = res
 
-    Returns the total cost.
-    """
-    max_v, vdays, tool_use, distance, cost = final_calculate_all_costs(
-        inst, dist, delivery_day, days_routes)
-
-    lines = [
-        f"DATASET = {inst.Dataset}",
-        f"NAME = {inst.Name}",
+    sol_line_by_line = [
+        f"DATASET = {instance.Dataset}",
+        f"NAME = {instance.Name}",
         "",
-        f"MAX_NUMBER_OF_VEHICLES = {max_v}",
-        f"NUMBER_OF_VEHICLE_DAYS = {vdays}",
-        f"TOOL_USE = {' '.join(str(t) for t in tool_use)}",
-        f"DISTANCE = {distance}",
-        f"COST = {cost}",
-        "",
-    ]
+        f"MAX_NUMBER_OF_VEHICLES = {res[0]}",
+        f"NUMBER_OF_VEHICLE_DAYS = {res[1]}",
+        f"TOOL_USE = {' '.join(str(z) for z in res[2])}",
+        f"DISTANCE = {res[3]}",
+        f"COST = {res[4]}",
+        "",]
 
-    for day in sorted(days_routes):
-        routes = days_routes[day]
-        if not routes:
-            continue
-        lines.append(f"DAY = {day}")
-        lines.append(f"NUMBER_OF_VEHICLES = {len(routes)}")
-        for vi, route in enumerate(routes):
-            lines.append(f"{vi + 1}\tR\t" + "\t".join(str(x) for x in route))
-        lines.append("")
+    given_day_sor=sorted(route_of_given_day)
+    for i in range(len(given_day_sor)):
+        this_moment_day = given_day_sor[i]
+        trips = route_of_given_day[this_moment_day]
+        checker_trip=len(trips) > 0
+        if checker_trip:
+            sol_line_by_line+=[f"DAY = {this_moment_day}",f"NUMBER_OF_VEHICLES = {len(trips)}"]
+            for i in range(len(trips)):
+                trip = trips[i]
+                string_maker_trip="\t".join(str(q) for q in trip)
+                output_line_maker=f"{i + 1}\tR\t{string_maker_trip}"
+                sol_line_by_line.append(output_line_maker)
+            sol_line_by_line.append("")
 
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
 
-    with open(output_path, 'w') as f:
-        f.write("\n".join(lines))
 
-    return cost
+    os.makedirs(os.path.dirname(file_referrer), exist_ok=True) if os.path.dirname(file_referrer) else None
+    with open(file_referrer, 'w') as g:
+     text_outputter="\n".join(sol_line_by_line)
+     g.write(text_outputter)
+    return res[4]
 
 # =============================================================================
 # MAIN FUNCTION
@@ -334,7 +328,7 @@ def solve(instance_path, output_path, verbose=True):
 
     if verbose:
         print("  [Step 2C] Writing solution...")
-    cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
+    cost = fun_sol_output_writer(inst, dist, delivery_day, days_routes, output_path)
 
     if verbose:
         max_v, vdays, tool_use, distance, _ = final_calculate_all_costs(
