@@ -190,46 +190,69 @@ def how_many_tooltype_busyday(instance, the_day_of_delivery):
     return [max(dic_keep_run_tooltype[d][i] for d in dic_keep_run_tooltype) for i in range(len(instance.Tools))]
 
 
-def calc_vehicle_stats(inst, dist, days_routes):
+def aquire_statistics_veh(instance, distance, route_of_given_day):
     """Calculate max vehicles, total vehicle days, and total distance."""
-    max_vehicles = 0
-    total_vehicle_days = 0
-    total_distance = 0
-    
-    for day, routes in days_routes.items():
-        max_vehicles = max(max_vehicles, len(routes))
-        total_vehicle_days += len(routes)
+    biggest_am_of_veh = 0
+    veh_all_in_total = 0
+    aquire_totaldis = 0
+     
+    dic_route=list(route_of_given_day.items())
+    counter=0
+    while counter < len(dic_route):
+        #day=dic_route[counter][0]
+        trip=dic_route[counter][1]
+        biggest_am_of_veh = max(biggest_am_of_veh, len(trip))
+        veh_all_in_total += len(trip)
         
-        for route in routes:
-            for i in range(len(route) - 1):
-                stop_a = route[i]
-                stop_b = route[i + 1]
+        routes_within_day=0
+        while routes_within_day < len(trip):
+            route=trip[routes_within_day] 
+            teller_when_stop=0
+            while teller_when_stop < len(trip[routes_within_day] ) - 1:    
+                the_stop_now = trip[routes_within_day] [teller_when_stop]
+                followed_stop = trip[routes_within_day] [teller_when_stop + 1]
+                if the_stop_now == 0:
+                    loc_stop_now = instance.DepotCoordinate
+                else:   
+                        loc_stop_now = instance.Requests[abs(the_stop_now) - 1].node
+                if followed_stop == 0:
+                        loc_followed_stop = instance.DepotCoordinate               
+                else:   
+                        loc_followed_stop = instance.Requests[abs(followed_stop) - 1].node
+
                 
-                node_a = inst.DepotCoordinate if stop_a == 0 else inst.Requests[abs(stop_a) - 1].node
-                node_b = inst.DepotCoordinate if stop_b == 0 else inst.Requests[abs(stop_b) - 1].node
-                
-                total_distance += dist[node_a][node_b]
-    
-    return max_vehicles, total_vehicle_days, total_distance
+                aquire_totaldis += distance[loc_stop_now][loc_followed_stop]
+                teller_when_stop += 1
+            routes_within_day += 1
+        counter += 1
+    return biggest_am_of_veh, veh_all_in_total, aquire_totaldis
 
 
-def compute_cost(inst, dist, delivery_day, days_routes):
-    """Calculate total cost and return all components."""
-    # Step 1: Tool usage
-    tool_use = how_many_tooltype_busyday(inst, delivery_day)
+def final_calculate_all_costs(instance, distance, the_day_of_delivery, route_of_given_day):
+
+    max_of_tool = how_many_tooltype_busyday(instance, the_day_of_delivery)
     
     # Step 2: Vehicle stats
-    max_vehicles, total_vehicle_days, total_distance = calc_vehicle_stats(inst, dist, days_routes)
+    biggest_am_of_veh, veh_all_in_total, aquire_totaldis = aquire_statistics_veh(instance, distance, route_of_given_day)
     
     # Step 3: Total cost
-    total_cost = (
-          max_vehicles       * inst.VehicleCost
-        + total_vehicle_days * inst.VehicleDayCost
-        + total_distance     * inst.DistanceCost
-        + sum(tool_use[i] * inst.Tools[i].cost for i in range(len(inst.Tools)))
-    )
+# Kosten opsplitsen in 4 delen
+    cal_cost_of_veh_given_day = veh_all_in_total * instance.VehicleDayCost
+    cal_cost_distance_total = aquire_totaldis * instance.DistanceCost
+    cal_cost_of_veh = biggest_am_of_veh * instance.VehicleCost
+    total_cost_for_tools = 0
+    for i in range(len(instance.Tools)):
+        total_cost_for_tools =total_cost_for_tools+ max_of_tool[i] * instance.Tools[i].cost
+   # Totaal
+    cal_all_costs_total = cal_cost_of_veh_given_day +cal_cost_distance_total +cal_cost_of_veh +total_cost_for_tools     
+    res_biggest_am_of_veh=biggest_am_of_veh
+    res_veh_all_in_total=veh_all_in_total
+    res_max_of_tool=max_of_tool
+    res_aquire_totaldis=aquire_totaldis
+    res_cal_all_costs_total=cal_all_costs_total
+    res=res_biggest_am_of_veh, res_veh_all_in_total, res_max_of_tool, res_aquire_totaldis, res_cal_all_costs_total
     
-    return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
+    return res
 # =============================================================================
 # STEP 2C — Write solution
 # =============================================================================
@@ -244,7 +267,7 @@ def write_solution(inst, dist, delivery_day, days_routes, output_path):
 
     Returns the total cost.
     """
-    max_v, vdays, tool_use, distance, cost = compute_cost(
+    max_v, vdays, tool_use, distance, cost = final_calculate_all_costs(
         inst, dist, delivery_day, days_routes)
 
     lines = [
@@ -314,7 +337,7 @@ def solve(instance_path, output_path, verbose=True):
     cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
 
     if verbose:
-        max_v, vdays, tool_use, distance, _ = compute_cost(
+        max_v, vdays, tool_use, distance, _ = final_calculate_all_costs(
             inst, dist, delivery_day, days_routes)
         print(f"\n  ── Cost breakdown (Step 3) ────────────────────────")
         print(f"  VEHICLE_COST     x {max_v:>5} = {max_v * inst.VehicleCost:>18,}")
