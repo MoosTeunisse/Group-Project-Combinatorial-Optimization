@@ -1,10 +1,7 @@
 import math
 import os
-import sys
 import argparse
-import subprocess
 import random
-import copy
 from collections import defaultdict
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
@@ -295,142 +292,33 @@ def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_give
      g.write(text_outputter)
     return res[4]
 
-# =============================================================================
-# MAIN FUNCTION
-# =============================================================================
+def processor(txt_finder, sol_txt):
+    object_data = InstanceCVRPTWUI(txt_finder)
+    checker=object_data.isValid()
+    if checker:
+        #object_data.calculateDistances()
+        cal_distances = calculate_all_distances(object_data)
+        ass_del = assign_delivery_days(object_data)
+        mak_of_routes = maker_of_routes(object_data, ass_del)
+   # fun_sol_output_writer(inst, dist, delivery_day, days_routes, output_path)
+        ret_parameters=(object_data, cal_distances, ass_del, mak_of_routes, sol_txt)
+        return fun_sol_output_writer(ret_parameters[0], ret_parameters[1], ret_parameters[2], ret_parameters[3], ret_parameters[4])
 
-def solve(instance_path, output_path, verbose=True):
-    """Run Step 2 and Step 3 for a single instance."""
-    inst = InstanceCVRPTWUI(instance_path)
-    if not inst.isValid():
-        print(f"ERROR: invalid instance {instance_path}")
-        for error in inst.errorReport:
-            print(f"  {error}")
-        sys.exit(1)
-
-    inst.calculateDistances()
-    dist = calculate_all_distances(inst)
-
-    if verbose:
-        print(f"\n{'='*55}")
-        print(f"  {os.path.basename(instance_path)}")
-        print(f"{'='*55}")
-        print(f"  Days={inst.Days}  Requests={len(inst.Requests)}"
-              f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
-
-    if verbose:
-        print("\n  [Step 2A] Assigning delivery days (+ repair)...")
-    delivery_day = assign_delivery_days(inst)
-
-    if verbose:
-        print("  [Step 2B] Building routes (one truck per task)...")
-    days_routes = maker_of_routes(inst, delivery_day)
-
-    if verbose:
-        print("  [Step 2C] Writing solution...")
-    cost = fun_sol_output_writer(inst, dist, delivery_day, days_routes, output_path)
-
-    if verbose:
-        max_v, vdays, tool_use, distance, _ = final_calculate_all_costs(
-            inst, dist, delivery_day, days_routes)
-        print(f"\n  ── Cost breakdown (Step 3) ────────────────────────")
-        print(f"  VEHICLE_COST     x {max_v:>5} = {max_v * inst.VehicleCost:>18,}")
-        print(f"  VEHICLE_DAY_COST x {vdays:>5} = {vdays * inst.VehicleDayCost:>18,}")
-        print(f"  DISTANCE_COST    x {distance:>5} = {distance * inst.DistanceCost:>18,}")
-        for i, t in enumerate(inst.Tools):
-            print(f"  Tool {t.ID} cost      x {tool_use[i]:>5} = {tool_use[i] * t.cost:>18,}")
-        print(f"  {'─'*48}")
-        print(f"  TOTAL COST               = {cost:>18,}")
-        print(f"  File                     : {output_path}")
-
-    return cost
-
-# =============================================================================
-# BATCH
-# =============================================================================
-
-def solve_batch(instances_dir, solutions_dir, verbose=True):
-    """Solve all .txt instances in a directory."""
-    os.makedirs(solutions_dir, exist_ok=True)
-    files = sorted(f for f in os.listdir(instances_dir) if f.endswith('.txt'))
-    if not files:
-        print(f"No .txt files found in: {instances_dir}")
-        return
-    results = []
-    total   = 0
-    for filename in files:
-        cost = solve(
-            os.path.join(instances_dir, filename),
-            os.path.join(solutions_dir, filename.replace('.txt', '_solution.txt')),
-            verbose=verbose
-        )
-        results.append((filename, cost))
-        total += cost
-    print(f"\n{'='*60}\nOVERVIEW\n{'='*60}")
-    for filename, cost in results:
-        print(f"  {filename:<45}  {cost:>15,}")
-    print(f"{'─'*60}\n  Total: {total:>51,}\n{'='*60}")
-
-# =============================================================================
-# VALIDATOR
-# =============================================================================
-
-def run_validator(instance_path, solution_path, validator_dir=None):
-    """Call the official Validate.py."""
-    if validator_dir is None:
-        validator_dir = os.path.dirname(os.path.abspath(__file__))
-    validate_py = os.path.join(validator_dir, 'Validate.py')
-    if not os.path.isfile(validate_py):
-        print(f"[!] Validate.py not found in: {validator_dir}")
-        return
-    print("\n[Validator] Checking solution...")
-    r = subprocess.run(
-        [sys.executable, validate_py, '-i', instance_path, '-s', solution_path],
-        capture_output=True, text=True
-    )
-    print(r.stdout)
-    if r.stderr:
-        print("STDERR:", r.stderr)
-
-# =============================================================================
-# CLI
-# =============================================================================
+    else:
+        return None
 
 def main():
-    parser = argparse.ArgumentParser(
-        prog="Solver.py",
-        description=(
-            "VeRoLog 2017 — Step 2 (Greedy Baseline) + Step 3 (Cost)\n\n"
-            "Examples:\n"
-            "  python Solver.py -i instances/testInstance.txt -o solutions/sol.txt\n"
-            "  python Solver.py -i instances/testInstance.txt"
-            " -o solutions/sol.txt --validate\n"
-            "  python Solver.py --batch instances/ solutions/\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument('-i', '--instance',    metavar='FILE')
-    parser.add_argument('-o', '--output',      metavar='FILE')
-    parser.add_argument('--batch', nargs=2,    metavar=('INST_DIR', 'SOL_DIR'))
-    parser.add_argument('--validate',          action='store_true')
-    parser.add_argument('--validator-dir',     metavar='DIR', dest='validator_dir')
-    parser.add_argument('--seed', type=int,    default=42)
-    parser.add_argument('--quiet',             action='store_true')
+    arg_p = argparse.ArgumentParser()
+       
+    arg_p.add_argument('-i', '--inp', required=True)
+    arg_p.add_argument('-s', '--solution')
 
-    args    = parser.parse_args()
-    random.seed(args.seed)
-    verbose = not args.quiet
 
-    if args.batch:
-        solve_batch(args.batch[0], args.batch[1], verbose=verbose)
-    elif args.instance:
-        output = args.output or args.instance.replace('.txt', '_solution.txt')
-        solve(args.instance, output, verbose=verbose)
-        if args.validate:
-            run_validator(args.instance, output, args.validator_dir)
-    else:
-        parser.print_help()
+    a    = arg_p.parse_args()
 
+    #output = a.output or a.instance.replace('.txt', '_solution.txt')
+    processor(a.inp, a.solution or a.inp.replace('.txt', '_res.txt'))
+       
 if __name__ == '__main__':
     main()
 
