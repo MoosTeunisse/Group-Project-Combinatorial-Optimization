@@ -30,6 +30,7 @@ import random
 import copy
 from collections import defaultdict
 
+from urllib import request
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
 from greedyBaseline import (
@@ -68,136 +69,241 @@ def solve(instance_path, output_path, verbose=True):
         print(f"ERROR: invalid instance {instance_path}")
         for error in inst.errorReport:
             print(f"  {error}")
-        sys.exit(1)
-
-    inst.calculateDistances()
-    dist = build_dist_matrix(inst)
-    
-    if verbose:
-        print(f"\n{'='*55}")
-        print(f"  {os.path.basename(instance_path)}")
-        print(f"{'='*55}")
-        print(f"  Days={inst.Days}  Requests={len(inst.Requests)}"
-              f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
-
-    if verbose:
-        print("\n  [Step 2A] Assigning delivery days (+ repair)...")
-    delivery_day = assign_delivery_days(inst)
-
-    if verbose:
-        print("  [Step 5] Building routes (Parallel)...")
-    # days_routes = build_routes_baseline(inst, delivery_day)
-    # days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
-    days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
-
-    if verbose:
-        print("  [Step 2C] Writing solution...")
-    cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
-
-    if verbose:
-        max_v, vdays, tool_use, distance, _ = compute_cost(
-            inst, dist, delivery_day, days_routes)
-        print(f"\n  ── Cost breakdown (Step 3) ────────────────────────")
-        print(f"  VEHICLE_COST     x {max_v:>5} = {max_v * inst.VehicleCost:>18,}")
-        print(f"  VEHICLE_DAY_COST x {vdays:>5} = {vdays * inst.VehicleDayCost:>18,}")
-        print(f"  DISTANCE_COST    x {distance:>5} = {distance * inst.DistanceCost:>18,}")
-        for i, t in enumerate(inst.Tools):
-            print(f"  Tool {t.ID} cost      x {tool_use[i]:>5} = {tool_use[i] * t.cost:>18,}")
-        print(f"  {'─'*48}")
-        print(f"  TOTAL COST               = {cost:>18,}")
-        print(f"  File                     : {output_path}")
-
-    return cost
 
 
-# =============================================================================
-# BATCH
-# =============================================================================
+def choose_best_day(instance, request, in_use, day_load, dist):
+    tool = instance.Tools[request.tool - 1]
+    tool_id = tool.ID
 
-def solve_batch(instances_dir, solutions_dir, verbose=True):
-    """Solve all .txt instances in a directory."""
-    os.makedirs(solutions_dir, exist_ok=True)
-    files = sorted(f for f in os.listdir(instances_dir) if f.endswith('.txt'))
-    if not files:
-        print(f"No .txt files found in: {instances_dir}")
-        return
-    results = []
-    total   = 0
-    for filename in files:
-        cost = solve(
-            os.path.join(instances_dir, filename),
-            os.path.join(solutions_dir, filename.replace('.txt', '_solution.txt')),
-            verbose=verbose
+
+    best_day = None
+    best_score = float("inf")
+
+    for delivery_day in range(request.fromDay, request.toDay + 1):
+        pickup_day = delivery_day + request.numDays
+
+        feasible = True
+        peak_usage = 0
+
+        for day in range(delivery_day, pickup_day):
+            new_usage = in_use[tool_id][day] + request.toolCount
+
+            if new_usage > tool.amount:
+                feasible = False
+                break
+
+            peak_usage = max(peak_usage, new_usage)
+
+        if not feasible:
+            continue
+
+       #make sure to tune this to actual relative cost
+        current_peak = max(in_use[tool_id])
+        new_peak = max(current_peak, peak_usage)
+
+        depot = instance.DepotCoordinate
+        distance_penalty = dist[depot][request.node] * 2
+
+        score = (
+            tool.cost * (new_peak - current_peak) +               
+            2 * (day_load[delivery_day] + day_load[pickup_day]) +
+            1 * (delivery_day - request.fromDay) +
+            0.5 * distance_penalty
         )
-        results.append((filename, cost))
-        total += cost
-    print(f"\n{'='*60}\nOVERVIEW\n{'='*60}")
-    for filename, cost in results:
-        print(f"  {filename:<45}  {cost:>15,}")
-    print(f"{'─'*60}\n  Total: {total:>51,}\n{'='*60}")
 
+        if score < best_score:
+            best_score = score
+            best_day = delivery_day
 
-# =============================================================================
-# VALIDATOR
-# =============================================================================
+    if best_day is None:
+        for delivery_day in range(request.fromDay, request.toDay + 1):
+            pickup_day = delivery_day + request.numDays
+            feasible = True
+            for day in range(delivery_day, pickup_day):
+                if in_use[tool_id][day] + request.toolCount > tool.amount:
+                    feasible = False
+                    break
+            if feasible:
+                return delivery_day
+        raise Exception(f"Could not schedule request {request.ID}")
 
-def run_validator(instance_path, solution_path, validator_dir=None):
-    """Call the official Validate.py."""
-    if validator_dir is None:
-        validator_dir = os.path.dirname(os.path.abspath(__file__))
-    validate_py = os.path.join(validator_dir, 'Validate.py')
-    if not os.path.isfile(validate_py):
-        print(f"[!] Validate.py not found in: {validator_dir}")
-        return
-    print("\n[Validator] Checking solution...")
-    r = subprocess.run(
-        [sys.executable, validate_py, '-i', instance_path, '-s', solution_path],
-        capture_output=True, text=True
+    return best_day
+
+def compute_total_cost(instance, schedule, in_use, day_load, routes_per_day):
+    vehicles_per_day = {
+        day: len(routes)
+        for day, routes in routes_per_day.items()
+    }
+    max_vehicles = max(vehicles_per_day.values()) if vehicles_per_day else 0
+    vehicle_days = sum(vehicles_per_day.values())
+
+    vehicle_cost_part = instance.VehicleCost * max_vehicles
+    vehicle_day_cost_part = instance.VehicleDayCost * vehicle_days
+
+    instance.calculateDistances()
+    dist_matrix = instance.calcDistance
+    depot = instance.DepotCoordinate
+    total_distance = 0
+
+    tool_peak = {}
+
+    for day, routes in routes_per_day.items():
+        for route in routes:
+            total_distance += route_distance(route, dist_matrix)
+
+    distance_cost_part = instance.DistanceCost * total_distance
+
+    for tool in instance.Tools:
+        tool_id = tool.ID
+        peak = max(in_use[tool_id]) if in_use[tool_id] else 0
+        tool_peak[tool_id] = peak
+
+    tool_cost_part = sum(
+        tool.cost * tool_peak[tool.ID]
+        for tool in instance.Tools
     )
-    print(r.stdout)
-    if r.stderr:
-        print("STDERR:", r.stderr)
 
+    total_cost = (
+        vehicle_cost_part
+        + vehicle_day_cost_part
+        + distance_cost_part
+        + tool_cost_part
+    )
 
-# =============================================================================
-# CLI
-# =============================================================================
+    return total_cost, {
+        "vehicle_cost": vehicle_cost_part,
+        "vehicle_day_cost": vehicle_day_cost_part,
+        "distance_cost": distance_cost_part,
+        "tool_cost": tool_cost_part,
+        "max_vehicles": max_vehicles,
+        "vehicle_days": vehicle_days,
+        "total_distance": total_distance,
+        "tool_peak": tool_peak,
+    }
 
 def main():
-    parser = argparse.ArgumentParser(
-        prog="Solver.py",
-        description=(
-            "VeRoLog 2017 — Step 2 (Greedy Baseline) + Step 3 (Cost)\n\n"
-            "Examples:\n"
-            "  python Solver.py -i instances/testInstance.txt -o solutions/sol.txt\n"
-            "  python Solver.py -i instances/testInstance.txt"
-            " -o solutions/sol.txt --validate\n"
-            "  python Solver.py --batch instances/ solutions/\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+    #You can run this file by typing "python Solver.py "instances 2026\instances\B1.txt"" in the command line
+    #of course you can use a different file, the above is just an example.
+    
+    if len(sys.argv) < 2:
+        print("Usage: python Solver.py <instance_file>")
+        sys.exit(1)
+    
+    #print("=== NEW VERSION RUNNING ===")
+        
+    input_path = sys.argv[1]
+    
+    instance = InstanceCVRPTWUI(input_path, "txt")
+    instance.calculateDistances()
+    dist = instance.calcDistance
+    
+    #prints the general info about the instance like the costs and stuff
+    print("Instance loaded successfully.")
+    print("Dataset:", instance.Dataset)
+    print("Name:", instance.Name)
+    print("Days:", instance.Days)
+    print("Capacity:", instance.Capacity)
+    print("Max trip distance:", instance.MaxDistance)
+    print("Depot coordinate:", instance.DepotCoordinate)
+    print("Vehicle cost:", instance.VehicleCost)
+    print("Vehicle day cost:", instance.VehicleDayCost)
+    print("Distance cost:", instance.DistanceCost)
+    print("Number of tools:", len(instance.Tools))
+    print("Number of coordinates:", len(instance.Coordinates))
+    print("Number of requests:", len(instance.Requests))
+
+    in_use = {
+    tool.ID: [0] * (instance.Days + 1)
+    for tool in instance.Tools
+    }
+
+    day_load = {day: 0 for day in range(1, instance.Days + 1)}
+
+    schedule = {}
+    
+    
+    #prints all the info about the first tool
+    if instance.Tools:
+        t = instance.Tools[0]
+        print("First tool details:")
+        print("  ID:", t.ID)
+        print("  Weight:", t.weight)
+        print("  Amount:", t.amount)
+        print("  Cost:", t.cost)
+    
+    #prints all the info about the first request
+    if instance.Requests:
+        r = instance.Requests[0]
+        print("First request details:")
+        print("  ID:", r.ID)
+        print("  Node:", r.node)
+        print("  From day:", r.fromDay)
+        print("  To day:", r.toDay)
+        print("  Number of days:", r.numDays)
+        print("  Tool:", r.tool)
+        print("  Tool count:", r.toolCount)
+
+    #prints the coordinates of the first request's node
+    if instance.Coordinates:
+        c = instance.Coordinates[instance.Requests[0].node]
+        print("First coordinate details:")
+        print("  ID:", c.ID)
+        print("  X:", c.X)
+        print("  Y:", c.Y)
+
+    depot = instance.DepotCoordinate
+    requests_sorted = sorted(
+    instance.Requests,
+    key=lambda r: ((r.toDay - r.fromDay), -r.toolCount, dist[depot][r.node])
     )
-    parser.add_argument('-i', '--instance',    metavar='FILE')
-    parser.add_argument('-o', '--output',      metavar='FILE')
-    parser.add_argument('--batch', nargs=2,    metavar=('INST_DIR', 'SOL_DIR'))
-    parser.add_argument('--validate',          action='store_true')
-    parser.add_argument('--validator-dir',     metavar='DIR', dest='validator_dir')
-    parser.add_argument('--seed', type=int,    default=42)
-    parser.add_argument('--quiet',             action='store_true')
 
-    args    = parser.parse_args()
-    random.seed(args.seed)
-    verbose = not args.quiet
+    for request in requests_sorted:
+        tool = instance.Tools[request.tool - 1]
+        total_weight = tool.weight * request.toolCount
 
-    if args.batch:
-        solve_batch(args.batch[0], args.batch[1], verbose=verbose)
-    elif args.instance:
-        output = args.output or args.instance.replace('.txt', '_solution.txt')
-        solve(args.instance, output, verbose=verbose)
-        if args.validate:
-            run_validator(args.instance, output, args.validator_dir)
-    else:
-        parser.print_help()
+        if total_weight > instance.Capacity:
+            raise Exception(f"Request {request.ID} exceeds vehicle capacity and cannot be scheduled.")
+        delivery_day = choose_best_day(instance, request, in_use, day_load, dist)
+        pickup_day = delivery_day + request.numDays
 
+    
+        for day in range(delivery_day, pickup_day):
+            tool_id = instance.Tools[request.tool - 1].ID
+            in_use[tool_id][day] += request.toolCount
+            #print(f"Scheduling request {request.ID}")
 
-if __name__ == '__main__':
+    
+        day_load[delivery_day] += 1
+        day_load[pickup_day] += 1
+
+    
+        schedule[request.ID] = (delivery_day, pickup_day)
+
+    print("NUMBER OF SCHEDULED REQUESTS:", len(schedule))
+
+    routes_per_day = {}
+    for day in range (1, instance.Days + 1):
+        tasks = build_day_tasks(instance, schedule, day)
+        if not tasks:
+            routes_per_day[day] = []
+            continue
+        routes = build_routes_parallel_regret(instance, tasks, dist)
+        routes_per_day[day] = routes
+
+    total_cost, breakdown = compute_total_cost(
+    instance, schedule, in_use, day_load, routes_per_day
+    )
+
+    print("\nCOST BREAKDOWN:")
+    for k, v in breakdown.items():
+        print(f"{k}: {v}")
+
+    print("\nTOTAL COST:", total_cost)
+
+    print("\nSCHEDULE:")
+    for req_id, (d, p) in schedule.items():
+        print(f"Request {req_id}: deliver day {d}, pickup day {p}")
+
+if __name__ == "__main__":
     main()
+    
