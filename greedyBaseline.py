@@ -395,6 +395,3 @@ def write_solution(inst, dist, delivery_day, days_routes, output_path):
         f.write("\n".join(lines))
 
     return cost
-
-
-
