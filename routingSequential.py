@@ -36,8 +36,7 @@ def build_day_tasks(inst, delivery_day):
     day_tasks = defaultdict(list)
     
     for req in inst.Requests:
-        deliver = delivery_day[req.ID]
-        pickup = deliver + req.numDays
+        deliver, pickup = delivery_day[req.ID]
         
         day_tasks[deliver].append(req.ID)
         day_tasks[pickup].append(-req.ID)
