@@ -1,6 +1,7 @@
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 from greedyBaseline import build_dist_matrix, assign_delivery_days
 from routingParallel import build_routes_parallel_regret
+from routingSequential import route_distance, is_route_feasible, best_insertion_in_route
 
 def strip_depots(days_routes):
     no_depot_route = {key: [route[1:-1] for route in day_routes] for key, day_routes in days_routes.items()}
@@ -10,25 +11,24 @@ def add_depots(days_routes):
     route_with_depot = {key: [[0] + route + [0] for route in day_routes] for key, day_routes in days_routes.items()}
     return route_with_depot
 
-def relocate(days_route, inst, dist):
+def relocate(day_routes, inst, dist):
     # Placeholder for relocate implementation
-    return False
+    return None
 
-def swap(days_route, inst, dist):
+def swap(day_routes, inst, dist):
     # Placeholder for swap implementation
-    return False
+    return None
 
-def two_opt(days_route, inst, dist):
+def two_opt(day_routes, inst, dist):
     # Placeholder for 2-opt implementation
-    return False
+    return None
 
 def two_opt_star(day_routes, inst, dist):
     # Placeholder for 2-opt* implementation
-    return False
+    return None
 
 def local_search_one_day(day_routes, inst, dist):
     # Placeholder for local search implementation
-    # You can implement 2-opt, swap, or any other local search heuristic here
     moves = [relocate, swap, two_opt, two_opt_star]
     improved = True
     while improved:
@@ -42,6 +42,11 @@ def local_search_one_day(day_routes, inst, dist):
                 break  # If we made an improvement, start over with the first move
     return day_routes
 
+def local_search(stripped_routes, inst, dist):
+    improved_routes = {}
+    for day, routes in stripped_routes.items():
+        improved_routes[day] = local_search_one_day(routes, inst, dist)
+    return improved_routes
 
 if __name__ == "__main__":
     instance_path = "B1.txt"
@@ -52,12 +57,14 @@ if __name__ == "__main__":
     
     delivery_day = assign_delivery_days(inst)
     days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
-    stripped_routes = strip_depots(days_routes)
-    added_depot_routes = add_depots(stripped_routes)
-    if added_depot_routes == days_routes:
-        print("Test passed: Stripping and adding depots returns original routes.")
-    else:
-        print("Test FAILED: round-trip did not match original.")
+    
+    bare = strip_depots(days_routes)
+    improved_bare = local_search(bare, inst, dist)
+    assert improved_bare == bare, "stubs should be a no-op"
+    
+    restored = add_depots(improved_bare)
+    assert restored == days_routes, "round-trip did not match original"
+    print("Test passed.")
     
     # your test here:
     # 1. strip the depots
