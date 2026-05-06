@@ -6,11 +6,9 @@ from collections import defaultdict
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
-
+# Claculate the distances
 def calculate_all_distances(instance_data):
-
     # n    = len(instance_data.Coordinates)
-    
     all_locations=instance_data.Coordinates
     amount_of_locations=len(all_locations)
     row_with_zero=[0] * amount_of_locations
@@ -30,7 +28,7 @@ def calculate_all_distances(instance_data):
             distance_table[j][i] = distance
     return distance_table
 
-# 1. Check of een dag haalbaar is (klein, duidelijk)
+# Check if a day is feasible
 def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
     last_day=given_day + request.numDays + 1
     for day in range(given_day, last_day):
@@ -38,7 +36,7 @@ def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_
         if total_amount_of_tools_of_type > maximum_amount_of_tools_of_type:
             return False
     return True
-# 2. Vind de beste dag voor een request (bevat de noodoplossing)
+# Find the best day for a request
 def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type):
     """Find earliest feasible day, or day with lowest peak."""
     starting_day=request.fromDay
@@ -57,8 +55,8 @@ def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
      
      return min(all_deleverable_days, key=score)
      
+# Place the request
 def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_of_tools_of_type):
-    """Assign delivery day and update usage."""
     the_day_of_delivery[request.ID]=obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
     the_day_when_delivery=the_day_of_delivery[request.ID]
     occupancy_days=request.numDays + 1
@@ -67,9 +65,9 @@ def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_
         comb_day_with_tool_type=(day, request.tool)
         new_total=occupied_tools.get(comb_day_with_tool_type, 0) + request.toolCount
         occupied_tools[comb_day_with_tool_type] = new_total
-# 4. Zoek alle overtredingen
-def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
 
+# Check for violations
+def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
     all_problems = {}
     for (day, type_of_tool), utilize_user in occupied_tools.items():
      equal_type=(type_of_tool == type_of_tool_occupied)
@@ -107,7 +105,6 @@ def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
     old_new_request(random.choice(causes), utilize, the_day_of_delivery, tool_max)
 
 
-
 def assign_delivery_days(instance):
     """Assign delivery days using greedy + repair."""
     utilize = defaultdict(int)
@@ -140,6 +137,8 @@ def assign_delivery_days(instance):
                 break
 
     return the_day_del  
+
+
 def maker_of_routes(instance, the_day_of_delivery):
 
     delivery_pickup = defaultdict(list)
@@ -161,9 +160,7 @@ def maker_of_routes(instance, the_day_of_delivery):
     for d, jobs in order_pickup 
 }
 
-# =============================================================================
-# STEP 3 — Cost calculation
-# =============================================================================
+# Cost calculation
 
 def how_many_tooltype_busyday(instance, the_day_of_delivery):
     """Calculate peak tool usage per tool type."""
@@ -229,18 +226,16 @@ def final_calculate_all_costs(instance, distance, the_day_of_delivery, route_of_
 
     max_of_tool = how_many_tooltype_busyday(instance, the_day_of_delivery)
     
-    # Step 2: Vehicle stats
+    # Vehicle stats
     biggest_am_of_veh, veh_all_in_total, aquire_totaldis = aquire_statistics_veh(instance, distance, route_of_given_day)
     
-    # Step 3: Total cost
-# Kosten opsplitsen in 4 delen
+    # Total cost in 4 parts
     cal_cost_of_veh_given_day = veh_all_in_total * instance.VehicleDayCost
     cal_cost_distance_total = aquire_totaldis * instance.DistanceCost
     cal_cost_of_veh = biggest_am_of_veh * instance.VehicleCost
     total_cost_for_tools = 0
     for i in range(len(instance.Tools)):
         total_cost_for_tools =total_cost_for_tools+ max_of_tool[i] * instance.Tools[i].cost
-   # Totaal
     cal_all_costs_total = cal_cost_of_veh_given_day +cal_cost_distance_total +cal_cost_of_veh +total_cost_for_tools     
     res_biggest_am_of_veh=biggest_am_of_veh
     res_veh_all_in_total=veh_all_in_total
@@ -250,9 +245,8 @@ def final_calculate_all_costs(instance, distance, the_day_of_delivery, route_of_
     res=res_biggest_am_of_veh, res_veh_all_in_total, res_max_of_tool, res_aquire_totaldis, res_cal_all_costs_total
     
     return res
-# =============================================================================
-# STEP 2C — Write solution
-# =============================================================================
+
+# Solution writer
 
 def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_given_day, file_referrer):
 
@@ -284,8 +278,6 @@ def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_give
                 sol_line_by_line.append(output_line_maker)
             sol_line_by_line.append("")
 
-
-
     os.makedirs(os.path.dirname(file_referrer), exist_ok=True) if os.path.dirname(file_referrer) else None
     with open(file_referrer, 'w') as g:
      text_outputter="\n".join(sol_line_by_line)
@@ -312,7 +304,6 @@ def main():
        
     arg_p.add_argument('-i', '--inp', required=True)
     arg_p.add_argument('-s', '--solution')
-
 
     a    = arg_p.parse_args()
 
