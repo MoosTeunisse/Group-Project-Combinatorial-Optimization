@@ -69,8 +69,8 @@ def solve(instance_path, output_path, verbose=True):
     if verbose:
         print("\n  Assigning delivery days (Scored)...")
     # delivery_day = assign_delivery_days(inst)
-    # delivery_day = assign_delivery_days_scored(inst, dist)
-    delivery_day = assign_delivery_days_gurobi(inst, dist)
+    # delivery_day = assign_delivery_days_gurobi(inst, dist)
+    delivery_day = assign_delivery_days_scored(inst, dist)
 
     if verbose:
         print("  Building routes (Parallel + Pivot)...")
