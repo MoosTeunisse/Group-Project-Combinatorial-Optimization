@@ -1,34 +1,14 @@
 """
-=============================================================================
-VeRoLog 2017 
-=============================================================================
-
-FILE STRUCTURE (place all files in the same directory):
-    Solver.py              <-- THIS FILE
-    baseCVRPTWUI.py         <-- from the zip, DO NOT modify
-    InstanceCVRPTWUI.py     <-- from the zip, DO NOT modify
-    Validate.py             <-- from the zip, DO NOT modify
-
-USAGE:
+How to use:
     python Solver.py -i instances/testInstance.txt -o solutions/sol.txt
     python Solver.py -i instances/testInstance.txt -o solutions/sol.txt --validate
-    python Solver.py --batch instances/ solutions/
-
-WHAT DOES THIS FILE DO?
-    This is the main solver file.
-    It reads an instance, computes a solution using a method, writes
-    the solution to a file, and optionally validates it.
-=============================================================================
 """
 
-import math
 import os
 import sys
 import argparse
 import subprocess
 import random
-import copy
-from collections import defaultdict
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
@@ -61,9 +41,11 @@ from schedulingScored import (
     assign_delivery_days_scored
 )
 
-# =============================================================================
-# MAIN FUNCTION
-# =============================================================================
+from schedulingGurobi import (
+    assign_delivery_days_gurobi
+)
+
+# Solver
 
 def solve(instance_path, output_path, verbose=True):
     """Run Step 2 and Step 3 for a single instance."""
@@ -87,13 +69,14 @@ def solve(instance_path, output_path, verbose=True):
     if verbose:
         print("\n  Assigning delivery days (Scored)...")
     # delivery_day = assign_delivery_days(inst)
-    delivery_day = assign_delivery_days_scored(inst, dist)
+    # delivery_day = assign_delivery_days_scored(inst, dist)
+    delivery_day = assign_delivery_days_gurobi(inst, dist)
 
     if verbose:
         print("  Building routes (Parallel + Pivot)...")
     # days_routes = build_routes_baseline(inst, delivery_day)
-    days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
-    # days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
+    # days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
+    days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
 
     if verbose:
         print("  [Step 2C] Writing solution...")
@@ -115,36 +98,7 @@ def solve(instance_path, output_path, verbose=True):
     return cost
 
 
-# =============================================================================
-# BATCH
-# =============================================================================
-
-def solve_batch(instances_dir, solutions_dir, verbose=True):
-    """Solve all .txt instances in a directory."""
-    os.makedirs(solutions_dir, exist_ok=True)
-    files = sorted(f for f in os.listdir(instances_dir) if f.endswith('.txt'))
-    if not files:
-        print(f"No .txt files found in: {instances_dir}")
-        return
-    results = []
-    total   = 0
-    for filename in files:
-        cost = solve(
-            os.path.join(instances_dir, filename),
-            os.path.join(solutions_dir, filename.replace('.txt', '_solution.txt')),
-            verbose=verbose
-        )
-        results.append((filename, cost))
-        total += cost
-    print(f"\n{'='*60}\nOVERVIEW\n{'='*60}")
-    for filename, cost in results:
-        print(f"  {filename:<45}  {cost:>15,}")
-    print(f"{'─'*60}\n  Total: {total:>51,}\n{'='*60}")
-
-
-# =============================================================================
-# VALIDATOR
-# =============================================================================
+# Validator
 
 def run_validator(instance_path, solution_path, validator_dir=None):
     """Call the official Validate.py."""
@@ -162,11 +116,6 @@ def run_validator(instance_path, solution_path, validator_dir=None):
     print(r.stdout)
     if r.stderr:
         print("STDERR:", r.stderr)
-
-
-# =============================================================================
-# CLI
-# =============================================================================
 
 def main():
     parser = argparse.ArgumentParser(
@@ -193,9 +142,7 @@ def main():
     random.seed(args.seed)
     verbose = not args.quiet
 
-    if args.batch:
-        solve_batch(args.batch[0], args.batch[1], verbose=verbose)
-    elif args.instance:
+    if args.instance:
         output = args.output or args.instance.replace('.txt', '_solution.txt')
         solve(args.instance, output, verbose=verbose)
         if args.validate:

@@ -1,37 +1,7 @@
-"""
-=============================================================================
-VeRoLog 2017  —  Step 5 Routing (sequential routing)
-=============================================================================
-
-FILE STRUCTURE (place all files in the same directory):
-    routingSequential.py              <-- THIS FILE
-    greedyBaseline.py                
-    Solver.py
-    baseCVRPTWUI.py         <-- from the zip, DO NOT modify
-    InstanceCVRPTWUI.py     <-- from the zip, DO NOT modify
-    Validate.py             <-- from the zip, DO NOT modify
-
-USAGE:
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt --validate
-    python Solver.py --batch instances/ solutions/
-
-WHAT DOES THIS FILE DO?
-
-    STEP 5 — Routing (sequential routing):
-    this makes a sequential extramileage insertion route.
-    
-=============================================================================
-"""
-
 from collections import defaultdict
 
-# =============================================================================
-# Building day tasks
-# =============================================================================
-
 def build_day_tasks(inst, delivery_day):
-    """Build a dictionary mapping each day to the list of tasks (pickups and deliveries) scheduled for that day."""
+    """Make a dict of tasks for the day"""
     
     day_tasks = defaultdict(list)
     
@@ -43,10 +13,6 @@ def build_day_tasks(inst, delivery_day):
         day_tasks[pickup].append(-req.ID)
         
     return day_tasks
-
-# =============================================================================
-# Calculating route distance
-# =============================================================================
 
 def route_distance(inst, dist, route_tasks):
     """Calculate the total distance of a route given the sequence of tasks."""
@@ -68,10 +34,6 @@ def route_distance(inst, dist, route_tasks):
     total += dist[last_req.node][depot]
     
     return total
-
-# =============================================================================
-# Load required for a route
-# =============================================================================
 
 def required_initial_load(inst, route_tasks):
     num_tools = len(inst.Tools)
@@ -99,9 +61,6 @@ def total_load_weight(inst, load_vec):
         total += load_vec[i] * inst.Tools[i].weight
     return total
 
-# =============================================================================
-# Route feasibility checks
-# =============================================================================
 
 def route_load_feasible(inst, route_tasks):
     load = required_initial_load(inst, route_tasks)
@@ -133,10 +92,6 @@ def is_route_feasible(inst, dist, route_tasks):
     
     return True
 
-# =============================================================================
-# Insertion heuristic for sequential routing
-# =============================================================================
-
 def get_insertion_penalty(inst):
     vehicle_importance = inst.VehicleCost + inst.VehicleDayCost
     distance_importance = inst.DistanceCost
@@ -150,7 +105,6 @@ def get_insertion_penalty(inst):
     return vehicle_ratio
 
 def best_insertion_in_route(inst, dist, route_tasks, task):
-    """Find the best position to insert a task into a route while maintaining feasibility."""
     
     old_dist = route_distance(inst, dist, route_tasks)
     penalty_weight = get_insertion_penalty(inst)
@@ -178,12 +132,7 @@ def best_insertion_in_route(inst, dist, route_tasks, task):
             
     return best_pos, best_score
 
-# =============================================================================
-# Pivot selection for sequential routing
-# =============================================================================
-
 def pivot_score(inst, dist, task):
-    """Calculate a pivot score for a task, which can be used to prioritize tasks for insertion."""
     
     req = inst.Requests[abs(task) - 1]
     depot = inst.DepotCoordinate
@@ -194,7 +143,6 @@ def pivot_score(inst, dist, task):
     return distance_from_depot + 2 * weight_difficulty
 
 def choose_pivot(inst, dist, unrouted):
-    """Choose the pivot task from the set of unrouted tasks based on the highest pivot score."""
     
     best_task = None
     best_score = None
@@ -208,12 +156,7 @@ def choose_pivot(inst, dist, unrouted):
     
     return best_task
 
-# =============================================================================
-# Building the sequential routes for all days
-# =============================================================================
-
 def build_routes_sequential_ex_day(inst, dist, day_tasks):
-    """Build routes sequentially for a single day, given the tasks scheduled for that day."""
     unrouted = set(day_tasks)
     finished_routes = []
     

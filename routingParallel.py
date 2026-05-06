@@ -102,7 +102,7 @@ def build_routes_parallel_regret(inst, delivery_day, dist):
     day_routes = {}
 
     for day in sorted(day_tasks):
-        # day_routes[day] = build_routes_parallel(inst, dist, day_tasks[day])
-        day_routes[day] = build_routes_parallel_two_step(inst, dist, day_tasks[day])
+        day_routes[day] = build_routes_parallel(inst, dist, day_tasks[day])
+        # day_routes[day] = build_routes_parallel_two_step(inst, dist, day_tasks[day])
     
     return day_routes
