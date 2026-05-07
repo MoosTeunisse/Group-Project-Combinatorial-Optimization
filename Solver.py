@@ -20,21 +20,11 @@ from greedyBaseline import (
     write_solution
 )
 
-from routingSequential import (
-    build_day_tasks,
-    route_distance,
-    required_initial_load,
-    route_load_feasible,
-    is_route_feasible,
-    best_insertion_in_route,
-    pivot_score,
-    choose_pivot,
-    build_routes_sequential_ex_day,
-    build_routes_sequential_ex
-)
+from routingSequential import *
 
 from routingParallel import (
-    build_routes_parallel_regret
+    build_routes_parallel_regret,
+    build_routes_parallel_regret_two_step
 )
 
 from schedulingScored import (
@@ -73,25 +63,26 @@ def solve(instance_path, output_path, verbose=True):
               f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
 
     if verbose:
-        print("\n  Assigning delivery days (Scored)...")
+        print("\n  assign delivery days")
     # delivery_day = assign_delivery_days(inst)
     # delivery_day = assign_delivery_days_gurobi(inst, dist)
     delivery_day = assign_delivery_days_scored(inst, dist)
 
     if verbose:
-        print("  Building routes (Parallel + Pivot)...")
-    # days_routes = build_routes_baseline(inst, delivery_day)
-    # days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
-    days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
+        print("  build routes")
+    #days_routes = build_routes_baseline(inst, delivery_day)
+    #days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
+    #days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
+    days_routes = build_routes_parallel_regret_two_step(inst, delivery_day, dist)
 
     if verbose:
-        print("  Running local search...")
+        print("  run local search")
     bare = strip_depots(days_routes)
     improved = local_search(bare, inst, dist)
     days_routes = add_depots(improved)
 
     if verbose:
-        print("  [Step 2C] Writing solution...")
+        print("  write solution")
     cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
 
     if verbose:
