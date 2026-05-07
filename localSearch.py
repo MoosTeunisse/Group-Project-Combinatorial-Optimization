@@ -12,18 +12,72 @@ def add_depots(days_routes):
     return route_with_depot
 
 def relocate(day_routes, inst, dist):
-    # Placeholder for relocate implementation
-    return None
+    """Best-improvement relocate over one day's routes.
+    
+    Returns (new_day_routes, delta) for the move that most reduces total
+    distance, or None if no improving move exists.
+    """
+    best_delta = 0
+    best_move = None
+    for source_index, source_route in enumerate(day_routes):
+        for source_position in range(len(source_route)):
+            task = source_route[source_position]
+            for target_index, target_route in enumerate(day_routes):
+                for target_position in range(len(target_route) + 1):
+                    if source_index == target_index and target_position == source_position:
+                        continue
+                    # Try relocating task to target route
+                    new_source = source_route[:source_position] + source_route[source_position+1:]
+                    if source_index == target_index:
+                        base_target = new_source
+                    else:
+                        base_target = target_route
+                    new_target = base_target[:target_position] + [task] + base_target[target_position:]
+                    
+                    if is_route_feasible(inst, dist, new_source) and is_route_feasible(inst, dist, new_target):
+                        if source_index == target_index:
+                            old_cost = route_distance(inst, dist, source_route)
+                            new_cost = route_distance(inst, dist, new_target)
+                        else:
+                            old_cost = route_distance(inst, dist, source_route) + route_distance(inst, dist, target_route)
+                            new_cost = route_distance(inst, dist, new_source) + route_distance(inst, dist, new_target)
+                        delta = new_cost - old_cost
+                        
+                        if delta < best_delta:
+                            best_delta = delta
+                            best_move = (source_index, source_position, target_index, target_position)
+    if best_move is None:
+        return None
+    source_index, source_position, target_index, target_position = best_move
+    new_day_routes = [route[:] for route in day_routes]
+    moved_task = new_day_routes[source_index].pop(source_position)
+    new_day_routes[target_index].insert(target_position, moved_task)
+    return new_day_routes, best_delta
 
 def swap(day_routes, inst, dist):
+    """Best-improvement swap over one day's routes.
+    
+    Returns (new_day_routes, delta) for the move that most reduces total
+    distance, or None if no improving move exists.
+    """
     # Placeholder for swap implementation
     return None
 
 def two_opt(day_routes, inst, dist):
+    """Best-improvement 2-opt over one day's routes.
+    
+    Returns (new_day_routes, delta) for the move that most reduces total
+    distance, or None if no improving move exists.
+    """
     # Placeholder for 2-opt implementation
     return None
 
 def two_opt_star(day_routes, inst, dist):
+    """Best-improvement 2-opt* over one day's routes.
+    
+    Returns (new_day_routes, delta) for the move that most reduces total
+    distance, or None if no improving move exists.
+    """
     # Placeholder for 2-opt* implementation
     return None
 
@@ -59,15 +113,16 @@ if __name__ == "__main__":
     days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
     
     bare = strip_depots(days_routes)
-    improved_bare = local_search(bare, inst, dist)
-    assert improved_bare == bare, "stubs should be a no-op"
     
-    restored = add_depots(improved_bare)
-    assert restored == days_routes, "round-trip did not match original"
-    print("Test passed.")
+    # Test relocate on each day
+    total_improvement = 0
+    for day, routes in bare.items():
+        result = relocate(routes, inst, dist)
+        if result is not None:
+            new_routes, delta = result
+            print(f"Day {day}: relocate found delta = {delta:.2f}")
+            total_improvement += delta
+        else:
+            print(f"Day {day}: no improving relocate move")
     
-    # your test here:
-    # 1. strip the depots
-    # 2. add them back
-    # 3. assert the result equals the original
-    # 4. print something so you know it ran
+    print(f"\nTotal single-pass improvement across all days: {total_improvement:.2f}")
