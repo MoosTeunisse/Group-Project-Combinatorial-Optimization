@@ -80,13 +80,21 @@ def swap(day_routes, inst, dist):
                     new_route2[pos2] = task1
 
                     if route1_index == route2_index:
+                        new_route1 = route1[:]
+                        new_route1[pos1] = task2
+                        new_route1[pos2] = task1
+
                         if not is_route_feasible(inst, dist, new_route1):
                             continue
 
                         old_cost = route_distance(inst, dist, route1)
                         new_cost = route_distance(inst, dist, new_route1)
-
                     else:
+                        new_route1 = route1[:]
+                        new_route2 = route2[:]
+                        new_route1[pos1] = task2
+                        new_route2[pos2] = task1
+                        
                         if not (
                             is_route_feasible(inst, dist, new_route1)
                             and is_route_feasible(inst, dist, new_route2)
@@ -245,6 +253,7 @@ def local_search_one_day(day_routes, inst, dist):
         if best_routes is None:
             break
         day_routes = best_routes
+    day_routes = [r for r in day_routes if len(r) > 0]
     return day_routes
 
 def local_search(stripped_routes, inst, dist):
@@ -256,16 +265,16 @@ def local_search(stripped_routes, inst, dist):
 # TESTING BLOCK - DELETE AFTER CODE IS COMPLETE AND WORKS
 if __name__ == "__main__":
     instance_path = "B1.txt"
-    
+
     inst = InstanceCVRPTWUI(instance_path)
     inst.calculateDistances()
     dist = build_dist_matrix(inst)
-    
+
     delivery_day = assign_delivery_days(inst)
     days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
-    
+
     bare = strip_depots(days_routes)
-    
+
     # Test relocate
     print("--- relocate single pass ---")
     total_relocate = 0
@@ -278,7 +287,20 @@ if __name__ == "__main__":
         else:
             print(f"Day {day}: no improving relocate move")
     print(f"Total relocate single-pass improvement: {total_relocate:.2f}")
-    
+
+    # Test swap
+    print("\n--- swap single pass ---")
+    total_swap = 0
+    for day, routes in bare.items():
+        result = swap(routes, inst, dist)
+        if result is not None:
+            new_routes, delta = result
+            print(f"Day {day}: swap found delta = {delta:.2f}")
+            total_swap += delta
+        else:
+            print(f"Day {day}: no improving swap move")
+    print(f"Total swap single-pass improvement: {total_swap:.2f}")
+
     # Test two_opt
     print("\n--- 2-opt single pass ---")
     total_2opt = 0
@@ -291,15 +313,67 @@ if __name__ == "__main__":
         else:
             print(f"Day {day}: no improving 2-opt move")
     print(f"Total 2-opt single-pass improvement: {total_2opt:.2f}")
-    # Test full driver to convergence
+
+    # Test 2-opt*
+    print("\n--- 2-opt* single pass ---")
+    total_2opt_star = 0
+    for day, routes in bare.items():
+        result = two_opt_star(routes, inst, dist)
+        if result is not None:
+            new_routes, delta = result
+            print(f"Day {day}: 2-opt* found delta = {delta:.2f}")
+            total_2opt_star += delta
+        else:
+            print(f"Day {day}: no improving 2-opt* move")
+    print(f"Total 2-opt* single-pass improvement: {total_2opt_star:.2f}")
+
+ # Test full driver to convergence (with task preservation check)
     print("\n--- full local search driver to convergence ---")
     total_full = 0
+    all_preserved = True
     for day, routes in bare.items():
+        before_tasks = sorted(t for r in routes for t in r)
         before = sum(route_distance(inst, dist, r) for r in routes)
-        improved = local_search_one_day(routes, inst, dist)
+        print(f"  Day {day}: starting...", flush=True)
+        moves_list = [relocate, swap, two_opt, two_opt_star]
+        pass_count = 0
+        while True:
+            pass_count += 1
+            best_routes = None
+            best_delta = 0
+            best_move_name = None
+            for move in moves_list:
+                result = move(routes, inst, dist)
+                if result is None:
+                    continue
+                new_routes, delta = result
+                if delta < best_delta:
+                    best_delta = delta
+                    best_routes = new_routes
+                    best_move_name = move.__name__
+            if best_routes is None:
+                break
+            actual_before = sum(route_distance(inst, dist, r) for r in routes)
+            actual_after = sum(route_distance(inst, dist, r) for r in best_routes)
+            actual_delta = actual_after - actual_before
+            mismatch = abs(actual_delta - best_delta) > 0.01
+            flag = " [DELTA MISMATCH]" if mismatch else ""
+            print(f"    pass {pass_count}: {best_move_name} reported={best_delta:.2f} actual={actual_delta:.2f}{flag}", flush=True)
+            routes = best_routes
+            if pass_count > 200:
+                print(f"    ABORTING - over 200 passes", flush=True)
+                break
+        improved = routes
         after = sum(route_distance(inst, dist, r) for r in improved)
+        after_tasks = sorted(t for r in improved for t in r)
         delta = after - before
-        print(f"Day {day}: before={before:.2f}, after={after:.2f}, delta={delta:.2f}")
+        preserved = before_tasks == after_tasks
+        if not preserved:
+            all_preserved = False
+        flag = "" if preserved else " [TASK MISMATCH]"
+        print(f"Day {day}: before={before:.2f}, after={after:.2f}, delta={delta:.2f}{flag}")
         total_full += delta
     print(f"Total full-driver improvement: {total_full:.2f}")
-    print(f"Single-pass reference (relocate + 2-opt): {total_relocate + total_2opt:.2f}")
+    ref = total_relocate + total_swap + total_2opt + total_2opt_star
+    print(f"Single-pass reference (sum of all four): {ref:.2f}")
+    print(f"Task preservation: {'OK' if all_preserved else 'FAILED'}")

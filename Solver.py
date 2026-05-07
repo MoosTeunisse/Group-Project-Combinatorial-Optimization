@@ -31,10 +31,6 @@ from schedulingScored import (
     assign_delivery_days_scored
 )
 
-from schedulingGurobi import (
-    assign_delivery_days_gurobi
-)
-
 from localSearch import (
     strip_depots,
     add_depots,
