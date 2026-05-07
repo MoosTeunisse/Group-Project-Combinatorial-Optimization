@@ -54,12 +54,82 @@ def relocate(day_routes, inst, dist):
 
 def swap(day_routes, inst, dist):
     """Best-improvement swap over one day's routes.
-    
+
     Returns (new_day_routes, delta) for the move that most reduces total
     distance, or None if no improving move exists.
     """
-    # Placeholder for swap implementation
-    return None
+    best_delta = 0
+    best_move = None
+
+    for route1_index, route1 in enumerate(day_routes):
+        for pos1 in range(len(route1)):
+            task1 = route1[pos1]
+
+            for route2_index in range(route1_index, len(day_routes)):
+                route2 = day_routes[route2_index]
+
+                start_pos2 = pos1 + 1 if route1_index == route2_index else 0
+
+                for pos2 in range(start_pos2, len(route2)):
+                    task2 = route2[pos2]
+
+                    new_route1 = route1[:]
+                    new_route2 = route2[:]
+
+                    new_route1[pos1] = task2
+                    new_route2[pos2] = task1
+
+                    if route1_index == route2_index:
+                        if not is_route_feasible(inst, dist, new_route1):
+                            continue
+
+                        old_cost = route_distance(inst, dist, route1)
+                        new_cost = route_distance(inst, dist, new_route1)
+
+                    else:
+                        if not (
+                            is_route_feasible(inst, dist, new_route1)
+                            and is_route_feasible(inst, dist, new_route2)
+                        ):
+                            continue
+
+                        old_cost = (
+                            route_distance(inst, dist, route1)
+                            + route_distance(inst, dist, route2)
+                        )
+
+                        new_cost = (
+                            route_distance(inst, dist, new_route1)
+                            + route_distance(inst, dist, new_route2)
+                        )
+
+                    delta = new_cost - old_cost
+
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_move = (
+                            route1_index,
+                            pos1,
+                            route2_index,
+                            pos2,
+                        )
+
+    if best_move is None:
+        return None
+
+    route1_index, pos1, route2_index, pos2 = best_move
+
+    new_day_routes = [route[:] for route in day_routes]
+
+    (
+        new_day_routes[route1_index][pos1],
+        new_day_routes[route2_index][pos2],
+    ) = (
+        new_day_routes[route2_index][pos2],
+        new_day_routes[route1_index][pos1],
+    )
+
+    return new_day_routes, best_delta
 
 def two_opt(day_routes, inst, dist):
     """Best-improvement 2-opt over one day's routes.
@@ -90,12 +160,74 @@ def two_opt(day_routes, inst, dist):
 
 def two_opt_star(day_routes, inst, dist):
     """Best-improvement 2-opt* over one day's routes.
-    
+
+    Exchanges route tails between two different routes.
+
     Returns (new_day_routes, delta) for the move that most reduces total
     distance, or None if no improving move exists.
     """
-    # Placeholder for 2-opt* implementation
-    return None
+    best_delta = 0
+    best_move = None
+
+    for route1_index in range(len(day_routes)):
+        for route2_index in range(route1_index + 1, len(day_routes)):
+
+            route1 = day_routes[route1_index]
+            route2 = day_routes[route2_index]
+
+            for cut1 in range(len(route1) + 1):
+                for cut2 in range(len(route2) + 1):
+
+                    # Exchange tails
+                    new_route1 = route1[:cut1] + route2[cut2:]
+                    new_route2 = route2[:cut2] + route1[cut1:]
+
+                    if not (
+                        is_route_feasible(inst, dist, new_route1)
+                        and is_route_feasible(inst, dist, new_route2)
+                    ):
+                        continue
+
+                    old_cost = (
+                        route_distance(inst, dist, route1)
+                        + route_distance(inst, dist, route2)
+                    )
+
+                    new_cost = (
+                        route_distance(inst, dist, new_route1)
+                        + route_distance(inst, dist, new_route2)
+                    )
+
+                    delta = new_cost - old_cost
+
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_move = (
+                            route1_index,
+                            route2_index,
+                            cut1,
+                            cut2,
+                        )
+
+    if best_move is None:
+        return None
+
+    route1_index, route2_index, cut1, cut2 = best_move
+
+    route1 = day_routes[route1_index]
+    route2 = day_routes[route2_index]
+
+    new_day_routes = [route[:] for route in day_routes]
+
+    new_day_routes[route1_index] = (
+        route1[:cut1] + route2[cut2:]
+    )
+
+    new_day_routes[route2_index] = (
+        route2[:cut2] + route1[cut1:]
+    )
+
+    return new_day_routes, best_delta
 
 def local_search_one_day(day_routes, inst, dist):
     moves = [relocate, swap, two_opt, two_opt_star]
