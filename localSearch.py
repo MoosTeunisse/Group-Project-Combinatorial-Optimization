@@ -98,18 +98,21 @@ def two_opt_star(day_routes, inst, dist):
     return None
 
 def local_search_one_day(day_routes, inst, dist):
-    # Placeholder for local search implementation
     moves = [relocate, swap, two_opt, two_opt_star]
-    improved = True
-    while improved:
-        improved = False
+    while True:
+        best_routes = None
+        best_delta = 0   
         for move in moves:
             result = move(day_routes, inst, dist)
-            if result is not None:
-                new_routes, delta = result
-                day_routes = new_routes
-                improved = True
-                break  # If we made an improvement, start over with the first move
+            if result is None:
+                continue
+            new_routes, delta = result
+            if delta < best_delta:
+                best_delta = delta
+                best_routes = new_routes
+        if best_routes is None:
+            break
+        day_routes = best_routes
     return day_routes
 
 def local_search(stripped_routes, inst, dist):
@@ -118,6 +121,7 @@ def local_search(stripped_routes, inst, dist):
         improved_routes[day] = local_search_one_day(routes, inst, dist)
     return improved_routes
 
+# TESTING BLOCK - DELETE AFTER CODE IS COMPLETE AND WORKS
 if __name__ == "__main__":
     instance_path = "B1.txt"
     
@@ -155,3 +159,15 @@ if __name__ == "__main__":
         else:
             print(f"Day {day}: no improving 2-opt move")
     print(f"Total 2-opt single-pass improvement: {total_2opt:.2f}")
+    # Test full driver to convergence
+    print("\n--- full local search driver to convergence ---")
+    total_full = 0
+    for day, routes in bare.items():
+        before = sum(route_distance(inst, dist, r) for r in routes)
+        improved = local_search_one_day(routes, inst, dist)
+        after = sum(route_distance(inst, dist, r) for r in improved)
+        delta = after - before
+        print(f"Day {day}: before={before:.2f}, after={after:.2f}, delta={delta:.2f}")
+        total_full += delta
+    print(f"Total full-driver improvement: {total_full:.2f}")
+    print(f"Single-pass reference (relocate + 2-opt): {total_relocate + total_2opt:.2f}")

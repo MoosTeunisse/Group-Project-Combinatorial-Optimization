@@ -45,6 +45,12 @@ from schedulingGurobi import (
     assign_delivery_days_gurobi
 )
 
+from localSearch import (
+    strip_depots,
+    add_depots,
+    local_search
+)
+
 # Solver
 
 def solve(instance_path, output_path, verbose=True):
@@ -77,6 +83,12 @@ def solve(instance_path, output_path, verbose=True):
     # days_routes = build_routes_baseline(inst, delivery_day)
     # days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
     days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
+
+    if verbose:
+        print("  Running local search...")
+    bare = strip_depots(days_routes)
+    improved = local_search(bare, inst, dist)
+    days_routes = add_depots(improved)
 
     if verbose:
         print("  [Step 2C] Writing solution...")
