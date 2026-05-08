@@ -1,7 +1,7 @@
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 from greedyBaseline import build_dist_matrix, assign_delivery_days
 from routingParallel import build_routes_parallel_regret
-from routingSequential import route_distance, is_route_feasible, best_insertion_in_route
+from routingSequential import find_route_distance, check_if_route_feasible, find_cheapest_insertion
 
 def strip_depots(days_routes):
     no_depot_route = {key: [route[1:-1] for route in day_routes] for key, day_routes in days_routes.items()}
@@ -33,13 +33,13 @@ def relocate(day_routes, inst, dist):
                     else:
                         base_target = target_route
                     new_target = base_target[:target_position] + [task] + base_target[target_position:]
-                    if is_route_feasible(inst, dist, new_source) and is_route_feasible(inst, dist, new_target):
+                    if check_if_route_feasible(inst, dist, new_source) and check_if_route_feasible(inst, dist, new_target):
                         if source_index == target_index:
-                            old_cost = route_distance(inst, dist, source_route)
-                            new_cost = route_distance(inst, dist, new_target)
+                            old_cost = find_route_distance(inst, dist, source_route)
+                            new_cost = find_route_distance(inst, dist, new_target)
                         else:
-                            old_cost = route_distance(inst, dist, source_route) + route_distance(inst, dist, target_route)
-                            new_cost = route_distance(inst, dist, new_source) + route_distance(inst, dist, new_target)
+                            old_cost = find_route_distance(inst, dist, source_route) + find_route_distance(inst, dist, target_route)
+                            new_cost = find_route_distance(inst, dist, new_source) + find_route_distance(inst, dist, new_target)
                         delta = new_cost - old_cost
                         if delta < best_delta:
                             best_delta = delta
@@ -84,11 +84,11 @@ def swap(day_routes, inst, dist):
                         new_route1[pos1] = task2
                         new_route1[pos2] = task1
 
-                        if not is_route_feasible(inst, dist, new_route1):
+                        if not check_if_route_feasible(inst, dist, new_route1):
                             continue
 
-                        old_cost = route_distance(inst, dist, route1)
-                        new_cost = route_distance(inst, dist, new_route1)
+                        old_cost = find_route_distance(inst, dist, route1)
+                        new_cost = find_route_distance(inst, dist, new_route1)
                     else:
                         new_route1 = route1[:]
                         new_route2 = route2[:]
@@ -96,19 +96,19 @@ def swap(day_routes, inst, dist):
                         new_route2[pos2] = task1
                         
                         if not (
-                            is_route_feasible(inst, dist, new_route1)
-                            and is_route_feasible(inst, dist, new_route2)
+                            check_if_route_feasible(inst, dist, new_route1)
+                            and check_if_route_feasible(inst, dist, new_route2)
                         ):
                             continue
 
                         old_cost = (
-                            route_distance(inst, dist, route1)
-                            + route_distance(inst, dist, route2)
+                            find_route_distance(inst, dist, route1)
+                            + find_route_distance(inst, dist, route2)
                         )
 
                         new_cost = (
-                            route_distance(inst, dist, new_route1)
-                            + route_distance(inst, dist, new_route2)
+                            find_route_distance(inst, dist, new_route1)
+                            + find_route_distance(inst, dist, new_route2)
                         )
 
                     delta = new_cost - old_cost
@@ -151,9 +151,9 @@ def two_opt(day_routes, inst, dist):
         for i in range(len(route) - 1):
             for j in range(i + 2, len(route) + 1):
                 new_route = route[:i] + route[i:j][::-1] + route[j:]
-                if is_route_feasible(inst, dist, new_route):
-                    old_cost = route_distance(inst, dist, route)
-                    new_cost = route_distance(inst, dist, new_route)
+                if check_if_route_feasible(inst, dist, new_route):
+                    old_cost = find_route_distance(inst, dist, route)
+                    new_cost = find_route_distance(inst, dist, new_route)
                     delta = new_cost - old_cost
                     if delta < best_delta:
                         best_delta = delta
@@ -191,19 +191,19 @@ def two_opt_star(day_routes, inst, dist):
                     new_route2 = route2[:cut2] + route1[cut1:]
 
                     if not (
-                        is_route_feasible(inst, dist, new_route1)
-                        and is_route_feasible(inst, dist, new_route2)
+                        check_if_route_feasible(inst, dist, new_route1)
+                        and check_if_route_feasible(inst, dist, new_route2)
                     ):
                         continue
 
                     old_cost = (
-                        route_distance(inst, dist, route1)
-                        + route_distance(inst, dist, route2)
+                        find_route_distance(inst, dist, route1)
+                        + find_route_distance(inst, dist, route2)
                     )
 
                     new_cost = (
-                        route_distance(inst, dist, new_route1)
-                        + route_distance(inst, dist, new_route2)
+                        find_route_distance(inst, dist, new_route1)
+                        + find_route_distance(inst, dist, new_route2)
                     )
 
                     delta = new_cost - old_cost
@@ -333,7 +333,7 @@ if __name__ == "__main__":
     all_preserved = True
     for day, routes in bare.items():
         before_tasks = sorted(t for r in routes for t in r)
-        before = sum(route_distance(inst, dist, r) for r in routes)
+        before = sum(find_route_distance(inst, dist, r) for r in routes)
         print(f"  Day {day}: starting...", flush=True)
         moves_list = [relocate, swap, two_opt, two_opt_star]
         pass_count = 0
@@ -353,8 +353,8 @@ if __name__ == "__main__":
                     best_move_name = move.__name__
             if best_routes is None:
                 break
-            actual_before = sum(route_distance(inst, dist, r) for r in routes)
-            actual_after = sum(route_distance(inst, dist, r) for r in best_routes)
+            actual_before = sum(find_route_distance(inst, dist, r) for r in routes)
+            actual_after = sum(find_route_distance(inst, dist, r) for r in best_routes)
             actual_delta = actual_after - actual_before
             mismatch = abs(actual_delta - best_delta) > 0.01
             flag = " [DELTA MISMATCH]" if mismatch else ""
@@ -364,7 +364,7 @@ if __name__ == "__main__":
                 print(f"    ABORTING - over 200 passes", flush=True)
                 break
         improved = routes
-        after = sum(route_distance(inst, dist, r) for r in improved)
+        after = sum(find_route_distance(inst, dist, r) for r in improved)
         after_tasks = sorted(t for r in improved for t in r)
         delta = after - before
         preserved = before_tasks == after_tasks

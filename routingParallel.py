@@ -1,4 +1,4 @@
-from routingSequential import(build_day_tasks, best_insertion_in_route, is_route_feasible, route_distance, build_routes_sequential_ex_day)
+from routingSequential import(collect_daily_tasks, find_cheapest_insertion, build_routes_for_day_seqEX)
 from pivotSelection import extract_pivots_from_routes
 
 def build_routes_parallel_day(inst, dist, task_list):
@@ -22,7 +22,7 @@ def build_routes_parallel_day(inst, dist, task_list):
 
 def build_routes_parallel_day_two_step(inst, dist, task_list):
     #build initial route for the day using sequential method
-    sequential_routes = build_routes_sequential_ex_day(inst, dist, task_list)
+    sequential_routes = build_routes_for_day_seqEX(inst, dist, task_list)
     
     #select pivots from sequential routes
     pivots = extract_pivots_from_routes(inst, dist, sequential_routes)
@@ -59,7 +59,7 @@ def scan_insertions(inst, dist, unrouted, routes):
         
         #find best and second best insertion of task across all routes
         for route_idx, route in enumerate(routes):
-            pos, extra = best_insertion_in_route(inst, dist, route, task)
+            pos, extra = find_cheapest_insertion(inst, dist, route, task)
             if pos is None:
                 continue
             
@@ -101,7 +101,7 @@ def select_task(best_dict, second_dict, unrouted):
     return chosen_task
 
 def build_routes_parallel_regret(inst, delivery_day, dist):
-    day_tasks = build_day_tasks(inst, delivery_day)
+    day_tasks = collect_daily_tasks(inst, delivery_day)
     day_routes = {}
 
     for day in sorted(day_tasks):
@@ -110,7 +110,7 @@ def build_routes_parallel_regret(inst, delivery_day, dist):
     return day_routes
 
 def build_routes_parallel_regret_two_step(inst, delivery_day, dist):
-    day_tasks = build_day_tasks(inst, delivery_day)
+    day_tasks = collect_daily_tasks(inst, delivery_day)
     day_routes = {}
 
     for day in sorted(day_tasks):

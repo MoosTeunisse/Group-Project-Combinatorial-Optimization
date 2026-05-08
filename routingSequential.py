@@ -1,200 +1,194 @@
 from collections import defaultdict
 
-def build_routes_sequential_ex(inst, delivery_day, dist):
+def build_routes_sequential_ex(instance, delivery_days, distance):
     """Goes through the days in order and makes routes for each day sequentially cuz its sequential extramileage ya know"""
-    day_tasks = build_day_tasks(inst, delivery_day)
-    days_routes = {}
+    jobs_for_a_day = collect_daily_tasks(instance, delivery_days)
+    routes_for_days = {}
     
-    for day in sorted(day_tasks):
-        days_routes[day] = build_routes_sequential_ex_day(inst, dist, day_tasks[day])
+    for day in sorted(jobs_for_a_day):
+        routes_for_days[day] = build_routes_for_day_seqEX(instance, distance, jobs_for_a_day[day])
     
-    return days_routes
+    return routes_for_days
 
-def build_routes_sequential_ex_day(inst, dist, day_tasks):
+def build_routes_for_day_seqEX(instance, distance, day_tasks):
     """Takes the tasks for a day, then whilst there are still unrouted tasks it chooses a pivot and build a route around it.
     Picks a new pivot when the current route cant be improved no more, repeats until all tasks are routed."""
     unrouted_tasks = list(day_tasks)
     finished_routes = []
     chosen_pivots = []
     
-    #keep going until all tasks are routed
     while unrouted_tasks:
-        #pick the best pivot from the unrouted tasks
-        current_pivot = choose_pivot(inst, dist, unrouted_tasks, chosen_pivots)
-        chosen_pivots.append(current_pivot)
+        pivot = choose_pivot(instance, distance, unrouted_tasks, chosen_pivots)
+        chosen_pivots.append(pivot)
         
-        current_route = [current_pivot]
-        unrouted_tasks.remove(current_pivot)
+        current_route = [pivot]
+        unrouted_tasks.remove(pivot)
         
-        #keep adding tasks to the current route until adding a tasks doesnt improve it no more
-        improved = True
-        while improved and len(unrouted_tasks) > 0:
-            improved = False
+        route_improved = True
+        while route_improved and len(unrouted_tasks) > 0:
+            route_improved = False
             best_task = None
-            best_position = None
-            best_extra = None
+            best_position_task = None
+            best_extra_distance = None
             
             for task in unrouted_tasks:
-                position, extra = best_insertion_in_route(inst, dist, current_route, task)
+                position, extra_distance = find_cheapest_insertion(instance, distance, current_route, task)
                 
                 if position is None:
                     continue
                 
-                if best_extra is None or extra < best_extra:
-                    best_extra = extra
-                    best_position = position
+                if best_extra_distance is None or extra_distance < best_extra_distance:
+                    best_extra_distance = extra_distance
+                    best_position_task = position
                     best_task = task
 
-            #insert best task and mark as improved
             if best_task is not None:
-                current_route.insert(best_position, best_task)
+                current_route.insert(best_position_task, best_task)
                 unrouted_tasks.remove(best_task)
-                improved = True
+                route_improved = True
                 
-        #add the route plus the depot at start and end
         finished_routes.append([0] + current_route + [0]) 
     
     return finished_routes
 
-def build_day_tasks(inst, delivery_day):
+def collect_daily_tasks(instance, delivery_days):
     """Make a dict of tasks (delivery and pickup) for the day"""
-    day_tasks = defaultdict(list)
+    tasks_by_day = defaultdict(list)
     
-    for req in inst.Requests:
-        deliver = delivery_day[req.ID]
+    for req in instance.Requests:
+        deliver = delivery_days[req.ID]
         pickup = deliver + req.numDays
         
-        day_tasks[deliver].append(req.ID)
-        day_tasks[pickup].append(-req.ID)
+        tasks_by_day[deliver].append(req.ID)
+        tasks_by_day[pickup].append(-req.ID)
         
-    return day_tasks
+    return tasks_by_day
 
-def best_insertion_in_route(inst, dist, route_tasks, task):
+def find_cheapest_insertion(instance, distance, route, task):
     """Find the best position to insert task into route, return the best position and the score of the insertion"""
-    old_dist = route_distance(inst, dist, route_tasks)
-    
     best_position = None
-    best_score = None
+    best_extra_distance = None
+    current_distance = find_route_distance(instance, distance, route)
     
-    for pos in range(len(route_tasks) + 1):
-        trial_route = route_tasks[:pos] + [task] + route_tasks[pos:]
+    for position in range(len(route) + 1):
+        trial_route = route[:position] + [task] + route[position:]
         
-        if not is_route_feasible(inst, dist, trial_route):
+        if not is_route_feasible(instance, distance, trial_route):
             continue
         
-        new_dist = route_distance(inst, dist, trial_route)
-        extra_distance = new_dist - old_dist
+        new_dist = find_route_distance(instance, distance, trial_route)
+        extra_distance = new_dist - current_distance
         
-        if best_score is None or extra_distance < best_score:
-            best_score = extra_distance
-            best_position = pos
+        if best_extra_distance is None or extra_distance < best_extra_distance:
+            best_extra_distance = extra_distance
+            best_position = position
             
-    return best_position, best_score
+    return best_position, best_extra_distance
 
-def route_distance(inst, dist, route_tasks):
+def find_route_distance(instance, distance, route_tasks):
     """calc the distance of a route"""
-    depot = inst.DepotCoordinate
+    depot = instance.DepotCoordinate
     
     if len(route_tasks) == 0:
         return 0
     
-    first_request = inst.Requests[abs(route_tasks[0]) - 1]
-    total = dist[depot][first_request.node]
+    first_request = instance.Requests[abs(route_tasks[0]) - 1]
+    total = distance[depot][first_request.node]
     
     for i in range(len(route_tasks) - 1):
-        req_a = inst.Requests[abs(route_tasks[i]) - 1]
-        req_b = inst.Requests[abs(route_tasks[i + 1]) - 1]
-        total += dist[req_a.node][req_b.node]
+        req_a = instance.Requests[abs(route_tasks[i]) - 1]
+        req_b = instance.Requests[abs(route_tasks[i + 1]) - 1]
+        total += distance[req_a.node][req_b.node]
     
-    last_req = inst.Requests[abs(route_tasks[-1]) - 1]
-    total += dist[last_req.node][depot]
+    last_req = instance.Requests[abs(route_tasks[-1]) - 1]
+    total += distance[last_req.node][depot]
     
     return total
 
-def is_route_feasible(inst, dist, route_tasks):
+def check_if_route_feasible(instance, distance, trial_route):
     """checks if route does not go over max distance or max load"""
-    if route_distance(inst, dist, route_tasks) > inst.MaxDistance:
+    if find_route_distance(instance, distance, trial_route) > instance.MaxDistance:
         return False
     
-    if not check_maximum_route_load(inst, route_tasks):
+    if not check_maximum_route_load(instance, trial_route):
         return False
     
     return True
 
-def check_maximum_route_load(inst, route_tasks):
+def check_maximum_route_load(instance, route_tasks):
     """check if we ever go ove capacity during the route"""
-    load = required_initial_load(inst, route_tasks)
+    load = find_initial_needed_tool_load(instance, route_tasks)
     
-    if total_load_weight(inst, load) > inst.Capacity:
+    if check_load_weight(instance, load) > instance.Capacity:
         return False
     
     for task in route_tasks:
-        req = inst.Requests[abs(task) - 1]
-        t = req.tool - 1
-        k = req.toolCount
+        request = instance.Requests[abs(task) - 1]
+        i = request.tool - 1
+        j = request.toolCount
         
         if task > 0:
-            load[t] -= k
+            load[i] -= j
         else:
-            load[t] += k
+            load[i] += j
         
-        if total_load_weight(inst, load) > inst.Capacity:
+        if check_load_weight(instance, load) > instance.Capacity:
             return False
     
     return True
 
-def required_initial_load(inst, route_tasks):
+def find_initial_needed_tool_load(instance, route_tasks):
     """figure out how much load we need at start of route"""
-    num_tools = len(inst.Tools)
-    balance = [0] * num_tools
-    req_load = [0] * num_tools
+    number_of_tools = len(instance.Tools)
+    balance = [0] * number_of_tools
+    required_load = [0] * number_of_tools
     
     for task in route_tasks:
-        req = inst.Requests[abs(task) - 1]
-        t = req.tool - 1
-        k = req.toolCount
+        request = instance.Requests[abs(task) - 1]
+        i = request.tool - 1
+        j = request.toolCount
         
         if task > 0:
-            balance[t] -= k
+            balance[i] -= j
         else:
-            balance[t] += k
+            balance[i] += j
 
-        if -balance[t] > req_load[t]:
-            req_load[t] = -balance[t]
+        if -balance[i] > required_load[i]:
+            required_load[i] = -balance[i]
     
-    return req_load
+    return required_load
 
-def total_load_weight(inst, load_vec):
+def check_load_weight(instance, load_vec):
     """check weight of the load"""
     total = 0
     for i in range(len(load_vec)):
-        total += load_vec[i] * inst.Tools[i].weight
+        total += load_vec[i] * instance.Tools[i].weight
     return total
 
-def pivot_score(inst, dist, task, chosen_pivots):
+def calculate_pivot_score(instance, distance, task, chosen_pivots):
     """Calc pivot score by checking distance from depot, distance from already chosen pivots and "weight" of  the task aka the tool load"""
-    req = inst.Requests[abs(task) - 1]
-    depot = inst.DepotCoordinate
+    request = instance.Requests[abs(task) - 1]
+    depot = instance.DepotCoordinate
     
-    distance_from_depot = dist[depot][req.node]
-    weight_difficulty = inst.Tools[req.tool - 1].weight * req.toolCount
+    distance_from_depot = distance[depot][request.node]
+    weight_difficulty = instance.Tools[request.tool - 1].weight * request.toolCount
     distance_from_pivots = 0
     
     for pivot in chosen_pivots:
-        pivot_request = inst.Requests[abs(pivot) - 1]
-        distance_from_pivots += dist[pivot_request.node][req.node]
+        pivot_request = instance.Requests[abs(pivot) - 1]
+        distance_from_pivots += distance[pivot_request.node][request.node]
     
     pivot_score = 0.25 * distance_from_depot + 0.25 * distance_from_pivots + 0.5 * weight_difficulty
     
     return pivot_score
 
-def choose_pivot(inst, dist, unrouted, chosen_pivots):
+def choose_pivot(instance, distance, unrouted, chosen_pivots):
     """Choose the next pivot based on the highest pivot score"""
     best_task = None
     best_score = None
     
     for task in unrouted:
-        score = pivot_score(inst, dist, task, chosen_pivots)
+        score = calculate_pivot_score(instance, distance, task, chosen_pivots)
 
         if best_score is None or score > best_score:
             best_score = score
