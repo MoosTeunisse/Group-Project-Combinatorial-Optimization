@@ -73,7 +73,7 @@ def find_cheapest_insertion(instance, distance, route, task):
     for position in range(len(route) + 1):
         trial_route = route[:position] + [task] + route[position:]
         
-        if not is_route_feasible(instance, distance, trial_route):
+        if not check_if_route_feasible(instance, distance, trial_route):
             continue
         
         new_dist = find_route_distance(instance, distance, trial_route)
