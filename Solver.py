@@ -66,16 +66,94 @@ def solve(instance_path, output_path, verbose=True):
 
     if verbose:
         print("  build routes")
-    #days_routes = build_routes_baseline(inst, delivery_day)
-    #days_routes = build_routes_sequential_ex(inst, delivery_day, dist)
-    #days_routes = build_routes_parallel_regret(inst, delivery_day, dist)
-    days_routes = build_routes_parallel_regret_two_step(inst, delivery_day, dist)
+
+    candidates = []
+
+    # Candidate 1: baseline
+    try:
+        routes = build_routes_baseline(inst, delivery_day)
+        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+        candidates.append(("baseline", routes, cost))
+        if verbose:
+            print(f"    baseline cost: {cost:,}")
+    except Exception as e:
+        if verbose:
+            print(f"    baseline failed: {e}")
+
+    # Candidate 2: sequential extra-mileage
+    try:
+        routes = build_routes_sequential_ex(inst, delivery_day, dist)
+        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+        candidates.append(("sequential extra-mileage", routes, cost))
+        if verbose:
+            print(f"    sequential extra-mileage cost: {cost:,}")
+    except Exception as e:
+        if verbose:
+            print(f"    sequential extra-mileage failed: {e}")
+
+    # Candidate 3: parallel regret
+    try:
+        routes = build_routes_parallel_regret(inst, delivery_day, dist)
+        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+        candidates.append(("parallel regret", routes, cost))
+        if verbose:
+            print(f"    parallel regret cost: {cost:,}")
+    except Exception as e:
+        if verbose:
+            print(f"    parallel regret failed: {e}")
+
+    # Candidate 4: two-step parallel regret
+    try:
+        routes = build_routes_parallel_regret_two_step(inst, delivery_day, dist)
+        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+        candidates.append(("two-step parallel regret", routes, cost))
+        if verbose:
+            print(f"    two-step parallel regret cost: {cost:,}")
+    except Exception as e:
+        if verbose:
+            print(f"    two-step parallel regret failed: {e}")
+
+    if len(candidates) == 0:
+        print("ERROR: no routing heuristic produced a solution")
+        sys.exit(1)
+
+    best_name, days_routes, best_cost = min(candidates, key=lambda x: x[2])
+
+    if verbose:
+        print(f"  selected routing heuristic: {best_name}")
+        print(f"  selected cost before local search: {best_cost:,}")
 
     if verbose:
         print("  run local search")
+
+    routes_before_ls = days_routes
+    cost_before_ls = best_cost
+
     bare = strip_depots(days_routes)
-    improved = local_search(bare, inst, dist)
-    days_routes = add_depots(improved)
+    improved = local_search(
+        bare,
+        inst,
+        dist,
+        max_seconds=5.0,
+        max_iterations=5000
+    )
+    routes_after_ls = add_depots(improved)
+
+    _, _, _, _, cost_after_ls = compute_cost(
+        inst,
+        dist,
+        delivery_day,
+        routes_after_ls
+    )
+
+    if cost_after_ls < cost_before_ls:
+        days_routes = routes_after_ls
+        if verbose:
+            print(f"  local search accepted: {cost_before_ls:,} -> {cost_after_ls:,}")
+    else:
+        days_routes = routes_before_ls
+        if verbose:
+            print(f"  local search rejected: {cost_before_ls:,} -> {cost_after_ls:,}")
 
     if verbose:
         print("  write solution")

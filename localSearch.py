@@ -1,3 +1,4 @@
+import time
 from routingSequential import find_route_distance, check_if_route_feasible
 
 def strip_depots(days_routes):
@@ -5,7 +6,7 @@ def strip_depots(days_routes):
     return no_depot_route
 
 def add_depots(days_routes):
-    route_with_depot = {key: [[0] + route + [0] for route in day_routes] for key, day_routes in days_routes.items()}
+    route_with_depot = {key: [[0] + route + [0] for route in day_routes if len(route) > 0] for key, day_routes in days_routes.items()}
     return route_with_depot
 
 def relocate(day_routes, inst, dist):
@@ -23,32 +24,76 @@ def relocate(day_routes, inst, dist):
                 for target_position in range(len(target_route) + 1):
                     if source_index == target_index and target_position == source_position:
                         continue
-                    # Try relocating task to target route
+                    
                     new_source = source_route[:source_position] + source_route[source_position+1:]
+
                     if source_index == target_index:
-                        base_target = new_source
+                        adjusted_target_position = target_position
+
+                        if target_position > source_position:
+                            adjusted_target_position -= 1
+
+                        new_target = (
+                            new_source[:adjusted_target_position]
+                            + [task]
+                            + new_source[adjusted_target_position:]
+                        )
+
+                        if not check_if_route_feasible(inst, dist, new_target):
+                            continue
+
+                        old_dist = find_route_distance(inst, dist, source_route)
+                        new_dist = find_route_distance(inst, dist, new_target)
+                        delta = (new_dist - old_dist) * inst.DistanceCost
+
                     else:
-                        base_target = target_route
-                    new_target = base_target[:target_position] + [task] + base_target[target_position:]
-                    if check_if_route_feasible(inst, dist, new_source) and check_if_route_feasible(inst, dist, new_target):
-                        if source_index == target_index:
-                            old_dist = find_route_distance(inst, dist, source_route)
-                            new_dist = find_route_distance(inst, dist, new_target)
-                            delta = (new_dist - old_dist) * inst.DistanceCost
-                        else:
-                            old_dist = find_route_distance(inst, dist, source_route) + find_route_distance(inst, dist, target_route)
-                            new_dist = find_route_distance(inst, dist, new_source) + find_route_distance(inst, dist, new_target)
-                            old_routes = (1 if source_route else 0) + (1 if target_route else 0)
-                            new_routes = (1 if new_source  else 0) + (1 if new_target  else 0)
-                            delta = (new_dist - old_dist) * inst.DistanceCost + (new_routes - old_routes) * inst.VehicleDayCost
-                        if delta < best_delta:
-                            best_delta = delta
-                            best_move = (source_index, source_position, target_index, target_position)
+                        new_target = (
+                            target_route[:target_position]
+                            + [task]
+                            + target_route[target_position:]
+                        )
+
+                        if not (
+                            check_if_route_feasible(inst, dist, new_source)
+                            and check_if_route_feasible(inst, dist, new_target)
+                        ):
+                            continue
+
+                        old_dist = (
+                            find_route_distance(inst, dist, source_route)
+                            + find_route_distance(inst, dist, target_route)
+                        )
+
+                        new_dist = (
+                            find_route_distance(inst, dist, new_source)
+                            + find_route_distance(inst, dist, new_target)
+                        )
+
+                        old_routes = (1 if source_route else 0) + (1 if target_route else 0)
+                        new_routes = (1 if new_source else 0) + (1 if new_target else 0)
+
+                        delta = (
+                            (new_dist - old_dist) * inst.DistanceCost
+                            + (new_routes - old_routes) * inst.VehicleDayCost
+                        )
+
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_move = (
+                            source_index,
+                            source_position,
+                            target_index,
+                            target_position
+                        )
     if best_move is None:
         return None
     source_index, source_position, target_index, target_position = best_move
     new_day_routes = [route[:] for route in day_routes]
     moved_task = new_day_routes[source_index].pop(source_position)
+    
+    if source_index == target_index and target_position > source_position:
+        target_position -= 1
+    
     new_day_routes[target_index].insert(target_position, moved_task)
     return new_day_routes, best_delta
 
@@ -181,27 +226,46 @@ def two_opt_star(day_routes, inst, dist):
     new_day_routes[route2_index] = (route2[:cut2] + route1[cut1:])
     return new_day_routes, best_delta
 
-def local_search_one_day(day_routes, inst, dist):
+def local_search_one_day(day_routes, inst, dist, max_seconds = 5.0, max_iterations = 5000):
     moves = [relocate, swap, two_opt, two_opt_star]
+    start_time = time.time()
+    iterations = 0
+    
     while True:
+        if time.time() - start_time > max_seconds:
+            break
+        if iterations >= max_iterations:
+            break
+        
+        iterations += 1
+        
         best_routes = None
-        best_delta = 0   
+        best_delta = 0  
+        
         for move in moves:
+            if time.time() - start_time > max_seconds:
+                break
+            
             result = move(day_routes, inst, dist)
             if result is None:
                 continue
+            
             new_routes, delta = result
+            
             if delta < best_delta:
                 best_delta = delta
                 best_routes = new_routes
         if best_routes is None:
+            print(f"  No improving move found after {iterations} iterations and {time.time() - start_time:.2f} seconds.")
             break
+        
         day_routes = best_routes
     day_routes = [r for r in day_routes if len(r) > 0]
     return day_routes
 
-def local_search(stripped_routes, inst, dist):
+def local_search(stripped_routes, inst, dist, max_seconds=1.0, max_iterations=1000):
     improved_routes = {}
     for day, routes in stripped_routes.items():
-        improved_routes[day] = local_search_one_day(routes, inst, dist)
+        print(f"  Local Search day: {day}", flush=True)
+        improved_routes[day] = local_search_one_day(routes, inst, dist, max_seconds=max_seconds, max_iterations=max_iterations)
     return improved_routes
