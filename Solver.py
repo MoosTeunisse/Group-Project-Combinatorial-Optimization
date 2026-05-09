@@ -31,8 +31,6 @@ from localSearch import (
     local_search
 )
 
-# Solver
-
 def solve(instance_path, output_path, verbose=True):
     inst = InstanceCVRPTWUI(instance_path)
     if not inst.isValid():
@@ -111,11 +109,11 @@ def solve(instance_path, output_path, verbose=True):
     if cost_after_ls < cost_before_ls:
         days_routes = routes_after_ls
         if verbose:
-            print(f"  local search accepted: {cost_before_ls:,} -> {cost_after_ls:,}")
+            print(f"  local search good :) : {cost_before_ls:,} -> {cost_after_ls:,}")
     else:
         days_routes = routes_before_ls
         if verbose:
-            print(f"  local search rejected: {cost_before_ls:,} -> {cost_after_ls:,}")
+            print(f"  local search bad :( : {cost_before_ls:,} -> {cost_after_ls:,}")
 
     if verbose:
         print("  write solution")
@@ -136,37 +134,24 @@ def solve(instance_path, output_path, verbose=True):
 
     return cost
 
-
-# Validator
 def run_validator(instance_path, solution_path, validator_dir=None):
-    """Call the official Validate.py."""
+    """run the validator so we know if our solution is valid"""
     if validator_dir is None:
         validator_dir = os.path.dirname(os.path.abspath(__file__))
     validate_py = os.path.join(validator_dir, 'Validate.py')
-    if not os.path.isfile(validate_py):
-        print(f"[!] Validate.py not found in: {validator_dir}")
-        return
-    print("\n[Validator] Checking solution...")
-    r = subprocess.run(
+    
+    result = subprocess.run(
         [sys.executable, validate_py, '-i', instance_path, '-s', solution_path],
         capture_output=True, text=True
     )
-    print(r.stdout)
-    if r.stderr:
-        print("STDERR:", r.stderr)
+    print(result.stdout)
 
 def main():
     parser = argparse.ArgumentParser(
         prog="Solver.py",
         description=(
-            "VeRoLog 2017 — Step 2 (Greedy Baseline) + Step 3 (Cost)\n\n"
-            "Examples:\n"
-            "  python Solver.py -i instances/testInstance.txt -o solutions/sol.txt\n"
-            "  python Solver.py -i instances/testInstance.txt"
-            " -o solutions/sol.txt --validate\n"
-            "  python Solver.py --batch instances/ solutions/\n"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+            "VeRoLog 2017\n\n"
+        )
     )
     parser.add_argument('-i', '--instance',    metavar='FILE')
     parser.add_argument('-o', '--output',      metavar='FILE')
@@ -187,7 +172,6 @@ def main():
             run_validator(args.instance, output, args.validator_dir)
     else:
         parser.print_help()
-
 
 if __name__ == '__main__':
     main()

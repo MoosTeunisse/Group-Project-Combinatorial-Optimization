@@ -1,27 +1,18 @@
 import math
 import os
-import sys
-import argparse
-import subprocess
 import random
 import copy
 from collections import defaultdict
 
-from InstanceCVRPTWUI import InstanceCVRPTWUI
-
-# Claculate the distances
 def calculate_all_distances(instance_data):
-    # n    = len(instance_data.Coordinates)
     all_locations=instance_data.Coordinates
     amount_of_locations=len(all_locations)
     row_with_zero=[0] * amount_of_locations
     distance_table = [row_with_zero[:] for _ in range(amount_of_locations)]
     for i in range(amount_of_locations):
-       # ci = instance_data.Coordinates[i]
         for j in range(i + 1, amount_of_locations):
             firstX, firstY=all_locations[i].X, all_locations[i].Y
             secondX, secondY=all_locations[j].X, all_locations[j].Y
-          #  cj = instance_data.Coordinates[j]
             difference_X=firstX- secondX
             difference_Y= firstY- secondY
 
@@ -31,7 +22,6 @@ def calculate_all_distances(instance_data):
             distance_table[j][i] = distance
     return distance_table
 
-# Check if a day is feasible
 def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
     last_day=given_day + request.numDays + 1
     for day in range(given_day, last_day):
@@ -39,7 +29,7 @@ def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_
         if total_amount_of_tools_of_type > maximum_amount_of_tools_of_type:
             return False
     return True
-# Find the best day for a request
+
 def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type):
     """Find earliest feasible day, or day with lowest peak."""
     starting_day=request.fromDay
@@ -48,7 +38,6 @@ def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
         if possible_on_day(request, day, occupied_tools, maximum_amount_of_tools_of_type):
             return day
     else:
-    # Emergency fallback
      all_deleverable_days=range(request.fromDay, request.toDay + 1)
      def score(pos_day):
       starting_range=pos_day
@@ -57,19 +46,16 @@ def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
                              for d in range(starting_range, ending_range))
      
      return min(all_deleverable_days, key=score)
-     
-# Place the request
+
 def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_of_tools_of_type):
     the_day_of_delivery[request.ID]=obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
     the_day_when_delivery=the_day_of_delivery[request.ID]
     occupancy_days=request.numDays + 1
-    #the_day_of_delivery[request.ID] = call_optimal
     for day in range(the_day_when_delivery, the_day_when_delivery + occupancy_days):
         comb_day_with_tool_type=(day, request.tool)
         new_total=occupied_tools.get(comb_day_with_tool_type, 0) + request.toolCount
         occupied_tools[comb_day_with_tool_type] = new_total
 
-# Check for violations
 def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
     all_problems = {}
     for (day, type_of_tool), utilize_user in occupied_tools.items():
@@ -104,24 +90,19 @@ def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
     if not causes:
         return False
     
-   # random_request_list = random.choice(causes)
     old_new_request(random.choice(causes), utilize, the_day_of_delivery, tool_max)
 
 def assign_delivery_days(instance):
     """Assign delivery days using greedy + repair."""
     utilize = defaultdict(int)
     the_day_del = {}
-    
-    # Phase 1: Greedy assignment
-    
+
     priority=lambda z: (z.toDay, z.toDay - z.fromDay)
 
     for i, request in enumerate (sorted(instance.Requests,
                              key=priority)):
-       # tool_max = instance.Tools[request.tool - 1].amount
         request_placer(request,the_day_del, utilize,  instance.Tools[request.tool - 1].amount)
-    
-    # Phase 2: Repair
+
     tries_to_repare=0
     maxum_repair_attempts=5000
     available_problem=True
@@ -134,7 +115,7 @@ def assign_delivery_days(instance):
             problems = overuse(utilize, instance.Tools, i)
             if problems:
                 available_problem=True
-                problem=list(problems.keys())[0]  # (day, tool)
+                problem=list(problems.keys())[0]
                 fix_a_problem(problem, utilize, the_day_del, instance.Requests, instance.Tools)
                 break
 
@@ -258,14 +239,9 @@ def compute_tool_use_exact_validator(inst, days_routes):
 
     return toolUse
 
-# =============================================================================
-# STEP 2C — Write solution
-# =============================================================================
-
 def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_given_day, file_referrer):
 
     res = compute_cost(instance, distance, the_day_of_delivery, route_of_given_day)
-  #  res_biggest_am_of_veh, res_veh_all_in_total, res_max_of_tool, res_aquire_totaldis, res_cal_all_costs_total = res
 
     sol_line_by_line = [
         f"DATASET = {instance.Dataset}",
