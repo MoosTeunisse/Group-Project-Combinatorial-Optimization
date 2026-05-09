@@ -61,7 +61,6 @@ def solve(instance_path, output_path, verbose=True):
     if verbose:
         print("\n  assign delivery days")
     # delivery_day = assign_delivery_days(inst)
-    # delivery_day = assign_delivery_days_gurobi(inst, dist)
     delivery_day = assign_delivery_days_scored(inst, dist)
 
     if verbose:
