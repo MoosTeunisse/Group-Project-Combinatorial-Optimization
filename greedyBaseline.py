@@ -1,39 +1,3 @@
-"""
-=============================================================================
-VeRoLog 2017  —  Step 2: Greedy Baseline  +  Step 3: Cost Calculator
-=============================================================================
-
-FILE STRUCTURE (place all files in the same directory):
-    greedyBaseline.py              <-- THIS FILE
-    routingSequential.py            <-- for Step 5, ignore for now
-    Solver.py                
-    baseCVRPTWUI.py         <-- from the zip, DO NOT modify
-    InstanceCVRPTWUI.py     <-- from the zip, DO NOT modify
-    Validate.py             <-- from the zip, DO NOT modify
-
-USAGE:
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt
-    python Solver.py -i instances/testInstance.txt -o solutions/sol.txt --validate
-    python Solver.py --batch instances/ solutions/
-
-WHAT DOES THIS FILE DO?
-
-  STEP 2 — Greedy Baseline (a valid solution, however expensive):
-    2A. Assign to each request the earliest possible delivery day
-        while respecting tool availability.
-        If that fails: repair violations iteratively.
-    2B. Send a separate truck for each task: depot -> customer -> depot.
-        One task per truck = never capacity or distance issues.
-    2C. Write the result in the official tab-separated format.
-
-  STEP 3 — Cost Calculation:
-    - VEHICLE_COST      × max vehicles on a single day
-    - VEHICLE_DAY_COST  × total vehicle-days
-    - DISTANCE_COST     × total travel distance
-    - tool.cost         × peak daily tool usage per type
-=============================================================================
-"""
-
 import math
 import os
 import sys
@@ -45,213 +9,163 @@ from collections import defaultdict
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
-# =============================================================================
-# HELPER FUNCTION: distance matrix
-# =============================================================================
+# Claculate the distances
+def calculate_all_distances(instance_data):
+    # n    = len(instance_data.Coordinates)
+    all_locations=instance_data.Coordinates
+    amount_of_locations=len(all_locations)
+    row_with_zero=[0] * amount_of_locations
+    distance_table = [row_with_zero[:] for _ in range(amount_of_locations)]
+    for i in range(amount_of_locations):
+       # ci = instance_data.Coordinates[i]
+        for j in range(i + 1, amount_of_locations):
+            firstX, firstY=all_locations[i].X, all_locations[i].Y
+            secondX, secondY=all_locations[j].X, all_locations[j].Y
+          #  cj = instance_data.Coordinates[j]
+            difference_X=firstX- secondX
+            difference_Y= firstY- secondY
 
-def build_dist_matrix(inst):
-    """
-    Build an n×n distance matrix based on inst.Coordinates.
-    Uses floor of Euclidean distance, as required by the problem.
-    """
-    n    = len(inst.Coordinates)
-    dist = [[0] * n for _ in range(n)]
-    for i in range(n):
-        ci = inst.Coordinates[i]
-        for j in range(i + 1, n):
-            cj = inst.Coordinates[j]
-            d  = int(math.floor(math.sqrt(
-                (ci.X - cj.X) ** 2 + (ci.Y - cj.Y) ** 2
-            )))
-            dist[i][j] = d
-            dist[j][i] = d
-    return dist
+            distance  = int(math.floor(math.sqrt((difference_X) ** 2 + 
+                                            (difference_Y) ** 2)))
+            distance_table[i][j] = distance
+            distance_table[j][i] = distance
+    return distance_table
 
-# =============================================================================
-# STEP 2A — Assign delivery days + repair
-# =============================================================================
+# Check if a day is feasible
+def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_of_type):
+    last_day=given_day + request.numDays + 1
+    for day in range(given_day, last_day):
+        total_amount_of_tools_of_type=occupied_tools.get((day, request.tool),0) + request.toolCount
+        if total_amount_of_tools_of_type > maximum_amount_of_tools_of_type:
+            return False
+    return True
+# Find the best day for a request
+def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type):
+    """Find earliest feasible day, or day with lowest peak."""
+    starting_day=request.fromDay
+    ending_day=request.toDay + 1
+    for day in range(starting_day, ending_day):
+        if possible_on_day(request, day, occupied_tools, maximum_amount_of_tools_of_type):
+            return day
+    else:
+    # Emergency fallback
+     all_deleverable_days=range(request.fromDay, request.toDay + 1)
+     def score(pos_day):
+      starting_range=pos_day
+      ending_range=pos_day + request.numDays + 1
+      return max(occupied_tools.get((d, request.tool), 0) 
+                             for d in range(starting_range, ending_range))
+     
+     return min(all_deleverable_days, key=score)
+     
+# Place the request
+def request_placer(request, the_day_of_delivery, occupied_tools, maximum_amount_of_tools_of_type):
+    the_day_of_delivery[request.ID]=obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type)
+    the_day_when_delivery=the_day_of_delivery[request.ID]
+    occupancy_days=request.numDays + 1
+    #the_day_of_delivery[request.ID] = call_optimal
+    for day in range(the_day_when_delivery, the_day_when_delivery + occupancy_days):
+        comb_day_with_tool_type=(day, request.tool)
+        new_total=occupied_tools.get(comb_day_with_tool_type, 0) + request.toolCount
+        occupied_tools[comb_day_with_tool_type] = new_total
 
-def assign_delivery_days(inst):
-    """
-    STEP 2A — Assign to each request the earliest possible delivery day
-    so that tool availability is not exceeded.
+# Check for violations
+def overuse(occupied_tools,list_of_tools, type_of_tool_occupied):
+    all_problems = {}
+    for (day, type_of_tool), utilize_user in occupied_tools.items():
+     equal_type=(type_of_tool == type_of_tool_occupied)
+     overuse_tools=(utilize_user > list_of_tools[type_of_tool_occupied - 1].amount)
+     if equal_type and overuse_tools:
+                all_problems[(day, type_of_tool_occupied)] = utilize_user
+    return all_problems
 
-    Phase 1 – Greedy assignment:
-      - Sort requests by earliest deadline (strictest first)
-      - Choose the earliest day in [fromDay, toDay] that is feasible
-      - If no day is feasible: choose the day with the lowest peak
-        (emergency fallback — may temporarily cause a violation)
+def old_new_request(request, utilize, the_day_of_delivery, maximum_amount_of_tools):
+    start = the_day_of_delivery[request.ID]
+    end= start + request.numDays + 1
+    
+    for days in range(start, end):
+       day_comb_tool_type = (days, request.tool)
+       utilize[day_comb_tool_type] -= request.toolCount    
+    request_placer(request,the_day_of_delivery, utilize,  maximum_amount_of_tools)
 
-    Phase 2 – Repair:
-      - If tool violations remain (due to emergency fallbacks),
-        iteratively shift offenders to better days until
-        all violations are resolved.
 
-    Validator tool usage definition:
-      Tools count as 'outside depot' from delivery day through pickup day
-      inclusive: range(delivery_day, pickup_day + 1)
+def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
+    """Try to fix one violation by shifting a random contributor."""
+    day_of_problem = problem[0]    
+    problem_tool = problem[1]   
+    tool_max = tools[problem_tool - 1].amount
+    causes = []
+    for random_request_list in requests:
+        equal_tool = (random_request_list.tool == problem_tool)
+        request_on_problemday = (day_of_problem in range(the_day_of_delivery[random_request_list.ID], 
+                                        the_day_of_delivery[random_request_list.ID] + random_request_list.numDays + 1))
+        if equal_tool and request_on_problemday:
+            causes.append(random_request_list)
+    if not causes:
+        return False
+    
+   # random_request_list = random.choice(causes)
+    old_new_request(random.choice(causes), utilize, the_day_of_delivery, tool_max)
 
-    Returns: dict  request ID -> delivery day
-    """
-    usage = defaultdict(int)   # (day, tool_id) -> occupancy
-    delivery_day = {}
+def assign_delivery_days(instance):
+    """Assign delivery days using greedy + repair."""
+    utilize = defaultdict(int)
+    the_day_del = {}
+    
+    # Phase 1: Greedy assignment
+    
+    priority=lambda z: (z.toDay, z.toDay - z.fromDay)
 
-    # ── Phase 1: Greedy assignment ───────────────────────────────────
-    sorted_requests = sorted(inst.Requests,
-                             key=lambda r: (r.toDay, r.toDay - r.fromDay))
+    for i, request in enumerate (sorted(instance.Requests,
+                             key=priority)):
+       # tool_max = instance.Tools[request.tool - 1].amount
+        request_placer(request,the_day_del, utilize,  instance.Tools[request.tool - 1].amount)
+    
+    # Phase 2: Repair
+    tries_to_repare=0
+    maxum_repair_attempts=5000
+    available_problem=True
 
-    for req in sorted_requests:
-        tool_max = inst.Tools[req.tool - 1].amount
-        chosen   = None
-
-        for day in range(req.fromDay, req.toDay + 1):
-            occupied = range(day, day + req.numDays + 1)   # incl. pickup day
-            if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in occupied):
-                chosen = day
+    while tries_to_repare < maxum_repair_attempts:
+        tries_to_repare+=1
+        available_problem=False
+        end_range=len(instance.Tools) + 1
+        for i in range(1, end_range):
+            problems = overuse(utilize, instance.Tools, i)
+            if problems:
+                available_problem=True
+                problem=list(problems.keys())[0]  # (day, tool)
+                fix_a_problem(problem, utilize, the_day_del, instance.Requests, instance.Tools)
                 break
 
-        if chosen is None:
-            # Emergency fallback: day with lowest peak occupancy
-            chosen = min(
-                range(req.fromDay, req.toDay + 1),
-                key=lambda day: max(
-                    usage[(d, req.tool)]
-                    for d in range(day, day + req.numDays + 1)
-                )
-            )
+    return the_day_del  
 
-        delivery_day[req.ID] = chosen
-        for d in range(chosen, chosen + req.numDays + 1):
-            usage[(d, req.tool)] += req.toolCount
+def maker_of_routes(instance, the_day_of_delivery):
 
-    # ── Phase 2: Repair ──────────────────────────────────────────────
-    for _ in range(5000):
-        # Find all violations
-        violations = {
-            (d, t): v
-            for (d, t), v in usage.items()
-            if v > inst.Tools[t - 1].amount
-        }
-        if not violations:
-            break   # done
+    delivery_pickup = defaultdict(list)
 
-        # Pick a random violation
-        (vday, vtool), _ = random.choice(list(violations.items()))
-        tool_max = inst.Tools[vtool - 1].amount
+    amount_of_the_requests=len(instance.Requests)
+    for i in range(amount_of_the_requests):
 
-        # Find requests contributing to this violation
-        contributors = [
-            req for req in inst.Requests
-            if req.tool == vtool
-            and vday in range(delivery_day[req.ID],
-                              delivery_day[req.ID] + req.numDays + 1)
-        ]
-        if not contributors:
-            break
+        req_equals_with_id=instance.Requests[i].ID
+        delivery_pickup[the_day_of_delivery[req_equals_with_id]].append(+req_equals_with_id)  
+        delivery_pickup[the_day_of_delivery[req_equals_with_id] + instance.Requests[i].numDays].append(-req_equals_with_id)   
 
-        # Pick a random contributor and try to shift it
-        req = random.choice(contributors)
-        cur = delivery_day[req.ID]
 
-        # Remove current contribution
-        for d in range(cur, cur + req.numDays + 1):
-            usage[(d, req.tool)] -= req.toolCount
 
-        # Find a feasible alternative day
-        alternatives = list(range(req.fromDay, req.toDay + 1))
-        random.shuffle(alternatives)
-        chosen = None
-
-        for day in alternatives:
-            if all(usage[(d, req.tool)] + req.toolCount <= tool_max
-                   for d in range(day, day + req.numDays + 1)):
-                chosen = day
-                break
-
-        if chosen is None:
-            # No perfect day: choose day with lowest peak
-            chosen = min(
-                alternatives,
-                key=lambda day: max(
-                    usage[(d, req.tool)]
-                    for d in range(day, day + req.numDays + 1)
-                )
-            )
-
-        delivery_day[req.ID] = chosen
-        for d in range(chosen, chosen + req.numDays + 1):
-            usage[(d, req.tool)] += req.toolCount
-
-    return delivery_day
-
-# =============================================================================
-# STEP 2B — Build routes: one truck per task
-# =============================================================================
-
-def build_routes_baseline(inst, delivery_day):
-    """
-    STEP 2B — Send a separate truck for each task.
-
-    Each truck drives: depot -> customer -> depot
-    Route = [0, task, 0]   where 0 = depot
-
-    Positive task (+r) = delivery of request r
-    Negative task (-r) = pickup of request r
-
-    This is the simplest solution that always works:
-      - Never capacity issues (one task per truck)
-      - Never distance issues (every customer is reachable)
-
-    Returns: dict  day -> list of routes
-    """
-    day_tasks = defaultdict(list)
-
-    for req in inst.Requests:
-        deliver = delivery_day[req.ID]
-        pickup  = deliver + req.numDays
-
-        day_tasks[deliver].append(+req.ID)   # delivery
-        day_tasks[pickup].append(-req.ID)    # pickup
-
-    days_routes = {}
-    for day, tasks in sorted(day_tasks.items()):
-        routes = []
-        for task in tasks:
-            route = [0, task, 0]   # depot -> customer -> depot
-            routes.append(route)
-        days_routes[day] = routes
-
-    return days_routes
-
-# =============================================================================
-# STEP 3 — Cost calculation
-# =============================================================================
+    route=lambda job: [0, job, 0]
+    route_every_time=lambda job_on_day: [route(job) for job in job_on_day]
+    order_pickup= sorted(delivery_pickup.items())
+    return {
+    d: route_every_time(jobs)
+    for d, jobs in order_pickup 
+}
 
 def compute_cost(inst, dist, delivery_day, days_routes):
-    """
-    STEP 3 — Calculate the total cost of the solution.
-
-    Cost formula (from the problem):
-        VEHICLE_COST      x  max vehicles used on a single day
-        VEHICLE_DAY_COST  x  total vehicle-days (sum across all days)
-        DISTANCE_COST     x  total travel distance
-        tool[i].cost      x  peak daily usage of tool type i
-
-    Tool usage (validator definition):
-      Tools count as outside-depot from delivery day through pickup day
-      inclusive: range(delivery_day, pickup_day + 1)
-
-    Returns:
-        (max_vehicles, total_vehicle_days, tool_use_list,
-         total_distance, total_cost)
-    """
     num_tools = len(inst.Tools)
 
-    # ── 1. Daily tool usage for objective ───────────────────────────
     tool_use = compute_tool_use_exact_validator(inst, days_routes)
 
-    # ── 2. Vehicles and distance ─────────────────────────────────────
     max_vehicles       = 0
     total_vehicle_days = 0
     total_distance     = 0
@@ -265,7 +179,6 @@ def compute_cost(inst, dist, delivery_day, days_routes):
                 stop_a = route[i]
                 stop_b = route[i + 1]
 
-                # 0 = depot, otherwise customer location of that request
                 node_a = inst.DepotCoordinate if stop_a == 0 \
                          else inst.Requests[abs(stop_a) - 1].node
                 node_b = inst.DepotCoordinate if stop_b == 0 \
@@ -273,7 +186,6 @@ def compute_cost(inst, dist, delivery_day, days_routes):
 
                 total_distance += dist[node_a][node_b]
 
-    # ── 3. Total cost ────────────────────────────────────────────────
     total_cost = (
           max_vehicles       * inst.VehicleCost
         + total_vehicle_days * inst.VehicleDayCost
@@ -284,9 +196,7 @@ def compute_cost(inst, dist, delivery_day, days_routes):
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
 
 def compute_tool_use_exact_validator(inst, days_routes):
-    """
-    Exact copy of the validator's tool-use logic
-    """
+    """Exact copy of the validator's tool-use logic"""
     toolStatus = [0] * len(inst.Tools)
     toolUse = [0] * len(inst.Tools)
 
@@ -352,46 +262,38 @@ def compute_tool_use_exact_validator(inst, days_routes):
 # STEP 2C — Write solution
 # =============================================================================
 
-def write_solution(inst, dist, delivery_day, days_routes, output_path):
-    """
-    STEP 2C — Write the solution in the official tab-separated format.
+def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_given_day, file_referrer):
 
-    Each route is written as:
-        vehicle_nr  R  0  task  0
-    (values separated by tabs)
+    res = compute_cost(instance, distance, the_day_of_delivery, route_of_given_day)
+  #  res_biggest_am_of_veh, res_veh_all_in_total, res_max_of_tool, res_aquire_totaldis, res_cal_all_costs_total = res
 
-    Returns the total cost.
-    """
-    max_v, vdays, tool_use, distance, cost = compute_cost(
-        inst, dist, delivery_day, days_routes)
-
-    lines = [
-        f"DATASET = {inst.Dataset}",
-        f"NAME = {inst.Name}",
+    sol_line_by_line = [
+        f"DATASET = {instance.Dataset}",
+        f"NAME = {instance.Name}",
         "",
-        f"MAX_NUMBER_OF_VEHICLES = {max_v}",
-        f"NUMBER_OF_VEHICLE_DAYS = {vdays}",
-        f"TOOL_USE = {' '.join(str(t) for t in tool_use)}",
-        f"DISTANCE = {distance}",
-        f"COST = {cost}",
-        "",
-    ]
+        f"MAX_NUMBER_OF_VEHICLES = {res[0]}",
+        f"NUMBER_OF_VEHICLE_DAYS = {res[1]}",
+        f"TOOL_USE = {' '.join(str(z) for z in res[2])}",
+        f"DISTANCE = {res[3]}",
+        f"COST = {res[4]}",
+        "",]
 
-    for day in sorted(days_routes):
-        routes = days_routes[day]
-        if not routes:
-            continue
-        lines.append(f"DAY = {day}")
-        lines.append(f"NUMBER_OF_VEHICLES = {len(routes)}")
-        for vi, route in enumerate(routes):
-            lines.append(f"{vi + 1}\tR\t" + "\t".join(str(x) for x in route))
-        lines.append("")
+    given_day_sor=sorted(route_of_given_day)
+    for i in range(len(given_day_sor)):
+        this_moment_day = given_day_sor[i]
+        trips = route_of_given_day[this_moment_day]
+        checker_trip=len(trips) > 0
+        if checker_trip:
+            sol_line_by_line+=[f"DAY = {this_moment_day}",f"NUMBER_OF_VEHICLES = {len(trips)}"]
+            for i in range(len(trips)):
+                trip = trips[i]
+                string_maker_trip="\t".join(str(q) for q in trip)
+                output_line_maker=f"{i + 1}\tR\t{string_maker_trip}"
+                sol_line_by_line.append(output_line_maker)
+            sol_line_by_line.append("")
 
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    with open(output_path, 'w') as f:
-        f.write("\n".join(lines))
-
-    return cost
+    os.makedirs(os.path.dirname(file_referrer), exist_ok=True) if os.path.dirname(file_referrer) else None
+    with open(file_referrer, 'w') as g:
+     text_outputter="\n".join(sol_line_by_line)
+     g.write(text_outputter)
+    return res[4]

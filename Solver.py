@@ -12,13 +12,7 @@ import random
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 
-from greedyBaseline import (
-    build_dist_matrix,
-    assign_delivery_days,
-    build_routes_baseline,
-    compute_cost,
-    write_solution
-)
+from greedyBaseline import *
 
 from routingSequential import *
 
@@ -40,7 +34,6 @@ from localSearch import (
 # Solver
 
 def solve(instance_path, output_path, verbose=True):
-    """Run Step 2 and Step 3 for a single instance."""
     inst = InstanceCVRPTWUI(instance_path)
     if not inst.isValid():
         print(f"ERROR: invalid instance {instance_path}")
@@ -49,18 +42,17 @@ def solve(instance_path, output_path, verbose=True):
         sys.exit(1)
 
     inst.calculateDistances()
-    dist = build_dist_matrix(inst)
+    dist = calculate_all_distances(inst)
     
     if verbose:
         print(f"\n{'='*55}")
         print(f"  {os.path.basename(instance_path)}")
         print(f"{'='*55}")
         print(f"  Days={inst.Days}  Requests={len(inst.Requests)}"
-              f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
+            f"  Customers={len(inst.Coordinates)-1}  Tools={len(inst.Tools)}")
 
     if verbose:
         print("\n  assign delivery days")
-    # delivery_day = assign_delivery_days(inst)
     delivery_day = assign_delivery_days_scored(inst, dist)
 
     if verbose:
@@ -68,49 +60,31 @@ def solve(instance_path, output_path, verbose=True):
 
     candidates = []
 
-    # Candidate 1: baseline
-    try:
-        routes = build_routes_baseline(inst, delivery_day)
-        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
-        candidates.append(("baseline", routes, cost))
-        if verbose:
-            print(f"    baseline cost: {cost:,}")
-    except Exception as e:
-        if verbose:
-            print(f"    baseline failed: {e}")
+    routes = maker_of_routes(inst, delivery_day)
+    _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+    candidates.append(("baseline", routes, cost))
+    if verbose:
+        print(f"    baseline cost: {cost:,}")
 
-    # Candidate 2: sequential extra-mileage
-    try:
-        routes = build_routes_sequential_ex(inst, delivery_day, dist)
-        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
-        candidates.append(("sequential extra-mileage", routes, cost))
-        if verbose:
-            print(f"    sequential extra-mileage cost: {cost:,}")
-    except Exception as e:
-        if verbose:
-            print(f"    sequential extra-mileage failed: {e}")
+    routes = build_routes_sequential_ex(inst, delivery_day, dist)
+    _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+    candidates.append(("sequential extra-mileage", routes, cost))
+    
+    if verbose:
+        print(f"    sequential extra-mileage cost: {cost:,}")
 
-    # Candidate 3: parallel regret
-    try:
-        routes = build_routes_parallel_regret(inst, delivery_day, dist)
-        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
-        candidates.append(("parallel regret", routes, cost))
-        if verbose:
-            print(f"    parallel regret cost: {cost:,}")
-    except Exception as e:
-        if verbose:
-            print(f"    parallel regret failed: {e}")
+    routes = build_routes_parallel_regret(inst, delivery_day, dist)
+    _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+    candidates.append(("parallel regret", routes, cost))
+    if verbose:
+        print(f"    parallel regret cost: {cost:,}")
 
-    # Candidate 4: two-step parallel regret
-    try:
-        routes = build_routes_parallel_regret_two_step(inst, delivery_day, dist)
-        _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
-        candidates.append(("two-step parallel regret", routes, cost))
-        if verbose:
-            print(f"    two-step parallel regret cost: {cost:,}")
-    except Exception as e:
-        if verbose:
-            print(f"    two-step parallel regret failed: {e}")
+
+    routes = build_routes_parallel_regret_two_step(inst, delivery_day, dist)
+    _, _, _, _, cost = compute_cost(inst, dist, delivery_day, routes)
+    candidates.append(("two-step parallel regret", routes, cost))
+    if verbose:
+        print(f"    two-step parallel regret cost: {cost:,}")
 
     if len(candidates) == 0:
         print("ERROR: no routing heuristic produced a solution")
@@ -129,21 +103,10 @@ def solve(instance_path, output_path, verbose=True):
     cost_before_ls = best_cost
 
     bare = strip_depots(days_routes)
-    improved = local_search(
-        bare,
-        inst,
-        dist,
-        max_seconds=5.0,
-        max_iterations=5000
-    )
+    improved = local_search(bare, inst, dist, max_seconds=5.0, max_iterations=5000)
     routes_after_ls = add_depots(improved)
 
-    _, _, _, _, cost_after_ls = compute_cost(
-        inst,
-        dist,
-        delivery_day,
-        routes_after_ls
-    )
+    _, _, _, _, cost_after_ls = compute_cost(inst, dist, delivery_day, routes_after_ls)
 
     if cost_after_ls < cost_before_ls:
         days_routes = routes_after_ls
@@ -156,7 +119,7 @@ def solve(instance_path, output_path, verbose=True):
 
     if verbose:
         print("  write solution")
-    cost = write_solution(inst, dist, delivery_day, days_routes, output_path)
+    cost = fun_sol_output_writer(inst, dist, delivery_day, days_routes, output_path)
 
     if verbose:
         max_v, vdays, tool_use, distance, _ = compute_cost(
@@ -175,7 +138,6 @@ def solve(instance_path, output_path, verbose=True):
 
 
 # Validator
-
 def run_validator(instance_path, solution_path, validator_dir=None):
     """Call the official Validate.py."""
     if validator_dir is None:
