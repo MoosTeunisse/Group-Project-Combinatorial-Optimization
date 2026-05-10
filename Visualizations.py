@@ -4,7 +4,7 @@ from routingSequential import build_routes_sequential_ex
 from routingParallel import build_routes_parallel_regret, build_routes_parallel_regret_two_step
 from schedulingScored import assign_delivery_days_scored
 from localSearch import strip_depots, add_depots, local_search
-import pickle, os
+import pickle, os, numpy as np, matplotlib.pyplot as plt
        
 def main(instance_path):
     inst = InstanceCVRPTWUI(instance_path)
@@ -62,16 +62,47 @@ Instances = [
     "instances 2026/instances/challenge_r500d25_3.txt",
 ]
 
-CACHE = "results_cache.pkl"
-
 if __name__ == "__main__":
+    CACHE = "results_cache.pkl"
+    
     if os.path.exists(CACHE):
         with open(CACHE, "rb") as f:
             results = pickle.load(f)
+        print("Loaded results from cache.")
     else:
-        results = [main(instance) for instance in Instances]
+        results = []
+        for instance in Instances:
+            print(f"Processing {instance}...", flush=True)
+            result = main(instance)
+            results.append(result)
         with open(CACHE, "wb") as f:
             pickle.dump(results, f)
-    
-    for result in results:
-        print(result)
+
+labels = [r['instance'].split('/')[-1].replace('challenge_', '').replace('.txt', '') for r in results]
+seq_pct = [(r['baseline'] - r['sequential']) / r['baseline'] * 100 for r in results]
+parRegret_pct = [(r['baseline'] - r['parallel']) / r['baseline'] * 100 for r in results]
+parRegretTwoStep_pct = [(r['baseline'] - r['parallelTwoStep']) / r['baseline'] * 100 for r in results]
+ls_seq_pct = [(r['baseline'] - r['ls_sequential']) / r['baseline'] * 100 for r in results]
+ls_parRegret_pct = [(r['baseline'] - r['ls_parallel']) / r['baseline'] * 100 for r in results]
+ls_parRegretTwoStep_pct = [(r['baseline'] - r['ls_parallelTwoStep']) / r['baseline'] * 100 for r in results]
+ls_baseline_pct = [(r['baseline'] - r['ls_baseline']) / r['baseline'] * 100 for r in results]
+
+x = np.arange(len(labels))
+plt.figure(figsize=(12, 6))
+width = 0.13
+ax = plt.gca()
+ax.set_ylim(0, 80)
+plt.bar(x - 2.5*width, ls_baseline_pct, width, label='LS Baseline')
+plt.bar(x - 1.5*width, seq_pct, width, label='Sequential')
+plt.bar(x - 0.5*width, ls_seq_pct, width, label='LS Sequential')
+plt.bar(x + 0.5*width, parRegret_pct, width, label='Parallel Regret')
+plt.bar(x + 1.5*width, ls_parRegret_pct, width, label='LS Parallel Regret')
+plt.bar(x + 2.5*width, parRegretTwoStep_pct, width, label='Two-Step Regret')
+plt.bar(x + 3.5*width, ls_parRegretTwoStep_pct, width, label='LS Two-Step Regret')
+plt.xticks(x, labels, rotation=45)
+plt.xticks(x, labels, rotation=45)
+plt.ylabel('Improvement over Baseline (%)')
+plt.title('Cost Improvement over Baseline by Heuristic')
+plt.legend()
+plt.tight_layout()
+plt.savefig("heuristic_comparison.png")
