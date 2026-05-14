@@ -10,11 +10,6 @@ def add_depots(days_routes):
     return route_with_depot
 
 def relocate(day_routes, inst, dist):
-    """Best-improvement relocate over one day's routes.
-    
-    Returns (new_day_routes, delta) for the move that most reduces total
-    distance, or None if no improving move exists.
-    """
     best_delta = 0
     best_move = None
     for source_index, source_route in enumerate(day_routes):
@@ -98,11 +93,6 @@ def relocate(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def swap(day_routes, inst, dist):
-    """Best-improvement swap over one day's routes.
-
-    Returns (new_day_routes, delta) for the move that most reduces total
-    distance, or None if no improving move exists.
-    """
     best_delta = 0
     best_move = None
 
@@ -154,11 +144,6 @@ def swap(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def two_opt(day_routes, inst, dist):
-    """Best-improvement 2-opt over one day's routes.
-    
-    Returns (new_day_routes, delta) for the move that most reduces total
-    distance, or None if no improving move exists.
-    """
     best_delta = 0
     best_move = None
     for route_index, route in enumerate(day_routes):
@@ -181,13 +166,6 @@ def two_opt(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def two_opt_star(day_routes, inst, dist):
-    """Best-improvement 2-opt* over one day's routes.
-
-    Exchanges route tails between two different routes.
-
-    Returns (new_day_routes, delta) for the move that most reduces total
-    distance, or None if no improving move exists.
-    """
     best_delta = 0
     best_move = None
 
@@ -256,7 +234,7 @@ def local_search_one_day(day_routes, inst, dist, max_seconds = 5.0, max_iteratio
                 best_delta = delta
                 best_routes = new_routes
         if best_routes is None:
-            print(f"  No improving move found after {iterations} iterations and {time.time() - start_time:.2f} seconds.")
+            print(f"No improving move found after {iterations} iterations and {time.time() - start_time:.2f} seconds")
             break
         
         day_routes = best_routes
@@ -266,6 +244,6 @@ def local_search_one_day(day_routes, inst, dist, max_seconds = 5.0, max_iteratio
 def local_search(stripped_routes, inst, dist, max_seconds=1.0, max_iterations=1000):
     improved_routes = {}
     for day, routes in stripped_routes.items():
-        print(f"  Local Search day: {day}", flush=True)
+        print(f"Local Search day: {day}")
         improved_routes[day] = local_search_one_day(routes, inst, dist, max_seconds=max_seconds, max_iterations=max_iterations)
     return improved_routes

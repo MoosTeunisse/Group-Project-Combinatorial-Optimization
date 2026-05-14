@@ -142,37 +142,38 @@ def maker_of_routes(instance, the_day_of_delivery):
     for d, jobs in order_pickup 
 }
 
-def compute_cost(inst, dist, delivery_day, days_routes):
+def compute_cost(inst, dist, days_routes):
     num_tools = len(inst.Tools)
-
     tool_use = compute_tool_use_exact_validator(inst, days_routes)
 
-    max_vehicles       = 0
+    max_vehicles = 0
     total_vehicle_days = 0
-    total_distance     = 0
+    total_distance = 0
 
-    for day, routes in days_routes.items():
-        max_vehicles        = max(max_vehicles, len(routes))
+    for day,routes in days_routes.items():
+        max_vehicles = max(max_vehicles, len(routes))
         total_vehicle_days += len(routes)
 
         for route in routes:
             for i in range(len(route) - 1):
-                stop_a = route[i]
-                stop_b = route[i + 1]
+                current_stop = route[i]
+                next_stop = route[i + 1]
 
-                node_a = inst.DepotCoordinate if stop_a == 0 \
-                         else inst.Requests[abs(stop_a) - 1].node
-                node_b = inst.DepotCoordinate if stop_b == 0 \
-                         else inst.Requests[abs(stop_b) - 1].node
+                if current_stop == 0:
+                    node_current_stop = inst.DepotCoordinate
+                else:
+                    node_current_stop = inst.Requests[abs(current_stop) - 1].node
+                
+                if next_stop == 0:
+                    node_next_stop = inst.DepotCoordinate
+                else:
+                    node_next_stop = inst.Requests[abs(next_stop) - 1].node
+                
+                total_distance += dist[node_current_stop][node_next_stop]
 
-                total_distance += dist[node_a][node_b]
-
-    total_cost = (
-          max_vehicles       * inst.VehicleCost
-        + total_vehicle_days * inst.VehicleDayCost
-        + total_distance     * inst.DistanceCost
-        + sum(tool_use[i] * inst.Tools[i].cost for i in range(num_tools))
-    )
+    tool_cost =sum(tool_use[i] * inst.Tools[i].cost for i in range(num_tools))
+    
+    total_cost = (max_vehicles * inst.VehicleCost + total_vehicle_days * inst.VehicleDayCost + total_distance * inst.DistanceCost + tool_cost)
 
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
 
@@ -241,7 +242,7 @@ def compute_tool_use_exact_validator(inst, days_routes):
 
 def fun_sol_output_writer(instance, distance, the_day_of_delivery, route_of_given_day, file_referrer):
 
-    res = compute_cost(instance, distance, the_day_of_delivery, route_of_given_day)
+    res = compute_cost(instance, distance, route_of_given_day)
 
     sol_line_by_line = [
         f"DATASET = {instance.Dataset}",
