@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 def build_routes_sequential_ex(instance, delivery_days, distance):
-    """Goes through the days in order and makes routes for each day sequentially cuz its sequential extramileage ya know"""
+    """Goes through the days in order and makes routes for each day sequentially cuz its sequential extramileage"""
     jobs_for_a_day = collect_daily_tasks(instance, delivery_days)
     routes_for_days = {}
     
@@ -12,7 +12,7 @@ def build_routes_sequential_ex(instance, delivery_days, distance):
 
 def build_routes_for_day_seqEX(instance, distance, day_tasks):
     """Takes the tasks for a day, then whilst there are still unrouted tasks it chooses a pivot and build a route around it.
-    Picks a new pivot when the current route cant be improved no more, repeats until all tasks are routed."""
+    Picks a new pivot when the current route until it cannot be improved anymore, repeats until all tasks are routed."""
     unrouted_tasks = list(day_tasks)
     finished_routes = []
     chosen_pivots = []
@@ -86,7 +86,7 @@ def find_cheapest_insertion(instance, distance, route, task):
     return best_position, best_extra_distance
 
 def find_route_distance(instance, distance, route_tasks):
-    """calc the distance of a route"""
+    """Calculate the distance of a route"""
     depot = instance.DepotCoordinate
     
     if len(route_tasks) == 0:
@@ -106,7 +106,7 @@ def find_route_distance(instance, distance, route_tasks):
     return total
 
 def check_if_route_feasible(instance, distance, trial_route):
-    """checks if route does not go over max distance or max load"""
+    """Checks if route does not go over max distance or max load"""
     if find_route_distance(instance, distance, trial_route) > instance.MaxDistance:
         return False
     
@@ -116,7 +116,7 @@ def check_if_route_feasible(instance, distance, trial_route):
     return True
 
 def check_maximum_route_load(instance, route_tasks):
-    """check if we ever go ove capacity during the route"""
+    """Check if we ever go over capacity during the route"""
     load = find_initial_needed_tool_load(instance, route_tasks)
     
     if check_load_weight(instance, load) > instance.Capacity:
@@ -138,7 +138,7 @@ def check_maximum_route_load(instance, route_tasks):
     return True
 
 def find_initial_needed_tool_load(instance, route_tasks):
-    """figure out how much load we need at start of route"""
+    """Figure out how much load we need at start of route"""
     number_of_tools = len(instance.Tools)
     balance = [0] * number_of_tools
     required_load = [0] * number_of_tools
@@ -159,14 +159,14 @@ def find_initial_needed_tool_load(instance, route_tasks):
     return required_load
 
 def check_load_weight(instance, load_vec):
-    """check weight of the load"""
+    """Check weight of the load"""
     total = 0
     for i in range(len(load_vec)):
         total += load_vec[i] * instance.Tools[i].weight
     return total
 
 def calculate_pivot_score(instance, distance, task, chosen_pivots):
-    """Calc pivot score by checking distance from depot, distance from already chosen pivots and "weight" of  the task aka the tool load"""
+    """Calculate pivot score by checking distance from depot, distance from already chosen pivots and "weight" of  the task aka the tool load"""
     request = instance.Requests[abs(task) - 1]
     depot = instance.DepotCoordinate
     

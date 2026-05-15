@@ -1,12 +1,15 @@
-"""
+r"""
 How to use:
-    python Solver.py -i "instances 2026\instances\instance_name.txt" -o instance_name_sol.txt
-    python Solver.py -i "instances 2026\instances\instance_name.txt" -o instance_name_sol.txt --validate
-The second one is to check if the solution is valid, so just always run it with that ya know.
+    python Solver.py instance_name.txt
+    python Solver.py instance_name.txt -- validate
+
+The first command line argument creates the solution file
+The second command line argument also creates the solution file but also checks if the solution is valid
 """
 
 import os
 import argparse
+import sys
 
 from InstanceCVRPTWUI import InstanceCVRPTWUI
 from Validate import SolutionCVRPTWUI
@@ -16,6 +19,15 @@ from routingSequential import *
 from routingParallel import build_routes_parallel_regret, build_routes_parallel_regret_two_step
 from schedulingScored import assign_delivery_days_scored
 from localSearch import strip_depots, add_depots, local_search
+
+def resolve_instance_path(path):
+    if os.path.exists(path):
+        return path
+    fallback = os.path.join("instances 2026", "instances", os.path.basename(path))
+    if os.path.exists(fallback):
+        return fallback
+    print(f"ERROR: instance file not found: {path}")
+    sys.exit(1)
 
 def solve(instance_path, output_path):
     inst = InstanceCVRPTWUI(instance_path)
@@ -77,18 +89,18 @@ def solve(instance_path, output_path):
 
     if cost_after_ls < cost_before_ls:
         days_routes = routes_after_ls
-        print(f"local search good :) : {cost_before_ls:,} -> {cost_after_ls:,}")
+        print(f"Local search improved: {cost_before_ls:,} -> {cost_after_ls:,}")
     else:
         days_routes = routes_before_ls
-        print(f"local search bad :( : {cost_before_ls:,} -> {cost_after_ls:,}")
+        print(f"Local search worsened: {cost_before_ls:,} -> {cost_after_ls:,}")
 
     cost = fun_sol_output_writer(inst, dist, delivery_day, days_routes, output_path)
 
     return cost
 
 def run_validator(instance_path, solution_path):
-    """run the validator so we know if our solution is valid"""
-    print(f"validate solution")
+    """Run the validator so we know if our solution is valid"""
+    print(f"Validating solution...")
 
     instance = InstanceCVRPTWUI(instance_path)
     solution = SolutionCVRPTWUI(solution_path, instance)
@@ -116,19 +128,25 @@ def run_validator(instance_path, solution_path):
 def main():
     parser = argparse.ArgumentParser(prog="Solver.py", description=("VeRoLog 2017\n\n")
     )
+    parser.add_argument('input', nargs='?')
     parser.add_argument('-i', metavar='FILE')
     parser.add_argument('-o', metavar='FILE')
     parser.add_argument('--validate', action='store_true')
     
     args = parser.parse_args()
 
-    if args.i:
-        output = args.o or args.i.replace('.txt', '_solution.txt')
-        solve(args.i, output)
-        if args.validate:
-            run_validator(args.i, output)
-    else:
-        parser.print_help()
+    instance_path = args.i or args.input
+    if instance_path:
+        instance_path = resolve_instance_path(instance_path)
 
+    if not instance_path:
+        parser.print_help()
+        return
+    
+    output = args.o or instance_path.replace('.txt', '_solution.txt')
+    solve(instance_path, output)
+    if args.validate:
+        run_validator(instance_path, output)
+    
 if __name__ == '__main__':
     main()

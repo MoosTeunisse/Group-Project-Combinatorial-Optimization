@@ -2,14 +2,17 @@ import time
 from routingSequential import find_route_distance, check_if_route_feasible
 
 def strip_depots(days_routes):
+    "Take out depots within routes to implement local search"
     no_depot_route = {key: [route[1:-1] for route in day_routes] for key, day_routes in days_routes.items()}
     return no_depot_route
 
 def add_depots(days_routes):
+    "Adding depots back to routes after local search"
     route_with_depot = {key: [[0] + route + [0] for route in day_routes if len(route) > 0] for key, day_routes in days_routes.items()}
     return route_with_depot
 
 def relocate(day_routes, inst, dist):
+    # Moves task from one position to another, either within the same route or to a different route
     best_delta = 0
     best_move = None
     for source_index, source_route in enumerate(day_routes):
@@ -93,6 +96,7 @@ def relocate(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def swap(day_routes, inst, dist):
+    # Swaps two tasks, either within the same route or from two routes
     best_delta = 0
     best_move = None
 
@@ -144,6 +148,7 @@ def swap(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def two_opt(day_routes, inst, dist):
+    # Reverses individual route segment, only within same route
     best_delta = 0
     best_move = None
     for route_index, route in enumerate(day_routes):
@@ -166,6 +171,7 @@ def two_opt(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def two_opt_star(day_routes, inst, dist):
+    # Exchanges route segments between two routes
     best_delta = 0
     best_move = None
 
@@ -205,6 +211,7 @@ def two_opt_star(day_routes, inst, dist):
     return new_day_routes, best_delta
 
 def local_search_one_day(day_routes, inst, dist, max_seconds = 5.0, max_iterations = 5000):
+    #Chooses best move among the 4 heuristics to improve solution until no improvements can be done anymore
     moves = [relocate, swap, two_opt, two_opt_star]
     start_time = time.time()
     iterations = 0

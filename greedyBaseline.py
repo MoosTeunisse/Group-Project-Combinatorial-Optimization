@@ -31,7 +31,6 @@ def possible_on_day(request, given_day, occupied_tools, maximum_amount_of_tools_
     return True
 
 def obtain_optimal_day(request, occupied_tools, maximum_amount_of_tools_of_type):
-    """Find earliest feasible day, or day with lowest peak."""
     starting_day=request.fromDay
     ending_day=request.toDay + 1
     for day in range(starting_day, ending_day):
@@ -76,7 +75,6 @@ def old_new_request(request, utilize, the_day_of_delivery, maximum_amount_of_too
 
 
 def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
-    """Try to fix one violation by shifting a random contributor."""
     day_of_problem = problem[0]    
     problem_tool = problem[1]   
     tool_max = tools[problem_tool - 1].amount
@@ -93,7 +91,6 @@ def fix_a_problem(problem, utilize, the_day_of_delivery, requests, tools):
     old_new_request(random.choice(causes), utilize, the_day_of_delivery, tool_max)
 
 def assign_delivery_days(instance):
-    """Assign delivery days using greedy + repair."""
     utilize = defaultdict(int)
     the_day_del = {}
 
@@ -178,7 +175,6 @@ def compute_cost(inst, dist, days_routes):
     return max_vehicles, total_vehicle_days, tool_use, total_distance, total_cost
 
 def compute_tool_use_exact_validator(inst, days_routes):
-    """Exact copy of the validator's tool-use logic"""
     toolStatus = [0] * len(inst.Tools)
     toolUse = [0] * len(inst.Tools)
 
